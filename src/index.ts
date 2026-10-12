@@ -1,27 +1,23 @@
 import { env } from './env.js';
 import { logger } from './logger.js';
 import { buildServer } from './http/server.js';
-import { startScheduler, stopScheduler } from './scheduler.js';
 
 async function main(): Promise<void> {
   const config = env();
 
-  logger.info('starting catercloud-automations', {
+  logger.info('starting catercloud-lead-tracker', {
     nodeEnv: config.NODE_ENV,
-    timezone: config.SCHEDULE_TIMEZONE,
-    dryRun: config.SOCIAL_DRY_RUN,
-    enabledClients: config.SOCIAL_ENABLED_CLIENTS,
+    timezone: config.TIMEZONE,
+    dryRun: config.DRY_RUN,
+    sheetConfigured: Boolean(config.LEAD_SHEET_ID),
   });
 
   const app = buildServer();
-  startScheduler();
-
   await app.listen({ port: config.PORT, host: config.HOST });
   logger.info('listening', { port: config.PORT, host: config.HOST });
 
   const shutdown = (signal: string) => {
     logger.info('shutting down', { signal });
-    stopScheduler();
     void app.close().then(
       () => process.exit(0),
       (err: unknown) => {

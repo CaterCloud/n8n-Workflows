@@ -5,15 +5,13 @@ import { ConfigError } from '../lib/errors.js';
 
 /**
  * Google access uses an OAuth *user* refresh token — the same grant n8n held,
- * so the existing Drive folders and spreadsheets stay reachable without
- * re-sharing anything. googleapis refreshes the access token on demand and
- * caches it in the client, so one client is reused process-wide.
+ * so the existing spreadsheet stays reachable without re-sharing anything.
+ * googleapis refreshes the access token on demand and caches it on the client,
+ * so one client is reused process-wide.
  */
 
-export const GOOGLE_SCOPES = [
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/spreadsheets',
-] as const;
+/** Sheets alone: nothing here touches Drive. */
+export const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'] as const;
 
 let client: OAuth2Client | undefined;
 

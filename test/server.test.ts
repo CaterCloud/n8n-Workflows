@@ -1,20 +1,18 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { useTestEnv } from './helpers.js';
 import { buildServer } from '../src/http/server.js';
-import { resetClientCacheForTesting } from '../src/social-posting/clients.js';
 
 let app: FastifyInstance;
 
 function start(overrides: Record<string, string> = {}): FastifyInstance {
   useTestEnv(overrides);
-  resetClientCacheForTesting();
   app = buildServer();
   return app;
 }
 
-beforeEach(() => {
-  delete process.env['SOCIAL_CLIENT_OVERRIDES'];
+afterEach(async () => {
+  await app?.close();
 });
 
 describe('health and readiness', () => {
@@ -25,18 +23,22 @@ describe('health and readiness', () => {
   });
 
   it('reports which integrations are configured without leaking values', async () => {
-    const res = await start({ OPENAI_API_KEY: 'sk-secret-value', LEAD_SHEET_ID: 'sheet-123' }).inject({
-      method: 'GET',
-      url: '/ready',
-    });
+    const res = await start({
+      LEAD_SHEET_ID: 'sheet-123',
+      GOOGLE_CLIENT_ID: 'client-id',
+      GOOGLE_CLIENT_SECRET: 'super-secret-value',
+      GOOGLE_REFRESH_TOKEN: 'refresh-token-value',
+    }).inject({ method: 'GET', url: '/ready' });
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       ok: true,
       timezone: 'Australia/Sydney',
-      configured: { openai: true, leadSheet: true, google: false },
+      events: 6,
+      configured: { google: true, leadSheet: true, webhookSecret: false },
     });
-    expect(res.body).not.toContain('sk-secret-value');
+    expect(res.body).not.toContain('super-secret-value');
+    expect(res.body).not.toContain('refresh-token-value');
     expect(res.body).not.toContain('sheet-123');
   });
 });
@@ -118,48 +120,36 @@ describe('webhook secret', () => {
 });
 
 describe('admin routes', () => {
-  it('are open when no ADMIN_TOKEN is set', async () => {
-    const res = await start().inject({ method: 'GET', url: '/admin/social/clients' });
-    expect(res.statusCode).toBe(200);
-    expect((res.json() as { clients: unknown[] }).clients).toHaveLength(5);
-  });
-
   it('require the token once it is set', async () => {
-    const res = await start({ ADMIN_TOKEN: 'admin-tok' }).inject({ method: 'GET', url: '/admin/jobs' });
+    const res = await start({ ADMIN_TOKEN: 'admin-tok' }).inject({ method: 'GET', url: '/admin/lead/sheet' });
     expect(res.statusCode).toBe(401);
   });
 
-  it('accept the token', async () => {
-    const res = await start({ ADMIN_TOKEN: 'admin-tok' }).inject({
+  it('report a missing spreadsheet as a configuration problem, not a crash', async () => {
+    const res = await start({ ADMIN_TOKEN: 'admin-tok', LEAD_SHEET_ID: '' }).inject({
       method: 'GET',
-      url: '/admin/jobs',
+      url: '/admin/lead/sheet',
       headers: { 'x-webhook-secret': 'admin-tok' },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ ok: false });
+  });
+});
+
+describe('malformed requests', () => {
+  it('rejects a body that is not JSON with a 400, not a 500', async () => {
+    const res = await start().inject({
+      method: 'POST',
+      url: '/webhooks/lead/pee-optin',
+      headers: { 'content-type': 'application/json' },
+      payload: '{ not json',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ ok: false });
   });
 
-  it('summarise each client without exposing account IDs', async () => {
-    const res = await start().inject({ method: 'GET', url: '/admin/social/clients' });
-    const body = res.json() as { clients: Array<Record<string, unknown>> };
-    const madison = body.clients.find((c) => c['slug'] === 'madison-ave');
-
-    expect(madison).toMatchObject({ accounts: 'auto', locationId: 'ULFhETUirfUFnKUhgCcI' });
-    expect(res.body).not.toContain('696f677c9d9a50e36c630ef5');
-  });
-
-  it('404s a run request for an unknown client', async () => {
-    const res = await start().inject({ method: 'POST', url: '/admin/social/run/nope' });
+  it('404s an unknown route', async () => {
+    const res = await start().inject({ method: 'GET', url: '/nope' });
     expect(res.statusCode).toBe(404);
-  });
-
-  it('rejects a non-numeric image count before doing any work', async () => {
-    const res = await start().inject({ method: 'POST', url: '/admin/social/run/avo-shack?images=abc' });
-    expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ error: '`images` must be a positive integer' });
-  });
-
-  it('rejects a zero image count', async () => {
-    const res = await start().inject({ method: 'POST', url: '/admin/social/run/avo-shack?images=0' });
-    expect(res.statusCode).toBe(400);
   });
 });

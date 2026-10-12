@@ -4,35 +4,31 @@
 
 Point a Railway service at this repository. `railway.json` selects the
 `Dockerfile` builder, sets `/health` as the healthcheck, and pins
-`numReplicas: 1` (the lead tracker's append lock is process-local — see
+`numReplicas: 1` (the append lock is process-local — see
 [the operational notes](../README.md#operational-notes)).
 
-No database or volume is needed. Nothing is persisted between runs.
+No database or volume is needed. Nothing is persisted between requests.
 
 ## 2. Set the variables
 
-Copy [`.env.example`](../.env.example) into the service's variables and fill it
-in. Minimum for a first boot:
+Copy [`.env.example`](../.env.example) into the service's variables. Minimum
+for a first boot:
 
 ```
-SCHEDULE_TIMEZONE=Australia/Sydney
-SOCIAL_ENABLED_CLIENTS=none
+TIMEZONE=Australia/Sydney
+LEAD_SHEET_ID=1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw
+LEAD_SHEET_NAME=PEE 
 WEBHOOK_SECRET=<generate one>
 ADMIN_TOKEN=<generate one>
+DRY_RUN=true
 ```
 
-`PORT` is injected by Railway; the service reads it.
+`LEAD_SHEET_NAME` ends in a space. Keep it — that is the tab's real name.
 
-Generate the two secrets with:
+`PORT` is injected by Railway; the service reads it. Generate the secrets with
+`openssl rand -hex 32`.
 
-```bash
-openssl rand -hex 32
-```
-
-Then add Google, OpenAI, Cloudinary and GoHighLevel credentials. Per-client GHL
-tokens (`GHL_TOKEN_AVO_SHACK` and friends) win over the shared `GHL_API_TOKEN`
-— GoHighLevel PITs are location-scoped, so each client normally needs its own.
-See [SECRETS.md](SECRETS.md) for which tokens the export exposed.
+Then add the three Google variables from [GOOGLE-OAUTH.md](GOOGLE-OAUTH.md).
 
 ## 3. Confirm it is up
 
@@ -41,39 +37,46 @@ curl https://<service>.up.railway.app/health
 curl -H "x-webhook-secret: $ADMIN_TOKEN" https://<service>.up.railway.app/ready
 ```
 
-`/ready` reports a boolean per integration, so you can see what is still
-missing without any value being echoed back:
+`/ready` reports a boolean per dependency, so you can see what is missing
+without any value being echoed back:
 
 ```json
 {
   "ok": true,
   "timezone": "Australia/Sydney",
-  "configured": { "google": true, "openai": true, "cloudinary": true,
-                  "ghlToken": true, "leadSheet": true },
-  "jobs": []
+  "dryRun": true,
+  "sheetName": "PEE ",
+  "configured": { "google": true, "leadSheet": true, "webhookSecret": true, "adminToken": true },
+  "events": 6
 }
 ```
 
-`jobs` stays empty while `SOCIAL_ENABLED_CLIENTS=none`.
+Then check the service can actually read the spreadsheet, and that the header
+still matches what the events expect:
 
-## 4. Move the lead webhooks over
+```bash
+curl -H "x-webhook-secret: $ADMIN_TOKEN" https://<service>.up.railway.app/admin/lead/sheet
+```
 
-These can cut over first — they are independent of the social posting side and
-each one is a single sheet write.
+`missingFromSheet` should be `[]`. Anything listed there is a column an event
+maps that the sheet does not have — usually a renamed header.
 
-For each of the six GoHighLevel webhooks, change only the host. The paths are
-unchanged:
+## 4. Point GoHighLevel at it
+
+For each of the six webhooks, change only the host. The paths are unchanged:
 
 ```
 https://<old-n8n-host>/webhook/b7cfa33b-4a60-41ea-8b89-23cac76f335a
 https://<service>.up.railway.app/webhook/b7cfa33b-4a60-41ea-8b89-23cac76f335a
 ```
 
-`GET /webhooks/lead` lists all six with their paths. If `WEBHOOK_SECRET` is
-set, add an `x-webhook-secret` header on the GoHighLevel side (or append
-`?secret=…` if headers are awkward there).
+`GET /webhooks/lead` lists all six. With `WEBHOOK_SECRET` set, add an
+`x-webhook-secret` header on the GoHighLevel side; if custom headers are
+awkward there, append `?secret=<value>` to the URL instead.
 
-Fire a test and watch the log line:
+While `DRY_RUN=true` the service accepts each webhook, resolves the full
+mapping, logs what it would write, and returns it — without touching the
+sheet. Fire a real event from GoHighLevel and read the response:
 
 ```bash
 curl -X POST https://<service>.up.railway.app/webhook/b7cfa33b-4a60-41ea-8b89-23cac76f335a \
@@ -82,61 +85,38 @@ curl -X POST https://<service>.up.railway.app/webhook/b7cfa33b-4a60-41ea-8b89-23
   -d '{"email":"you@example.com","full_name":"Test Lead","phone":"+61400000000"}'
 ```
 
-You should get `{"ok":true,"action":"appended",...}` or `"updated"`, and see the
-row change in the spreadsheet. Then disable the six n8n workflows.
-
-## 5. Move the social posting over
-
-Do this one client at a time, and **disable the matching n8n workflow before
-enabling the client here** — otherwise both will post.
-
-Dry run first. This calls Drive, Cloudinary and OpenAI for real but never
-GoHighLevel:
-
-```bash
-curl -X POST -H "x-webhook-secret: $ADMIN_TOKEN" \
-  "https://<service>.up.railway.app/admin/social/run/avo-shack?dryRun=true&images=2"
+```json
+{ "ok": true, "action": "appended", "dryRun": true, "columnsWritten": ["Name","PHONE NUMBER", "…"] }
 ```
 
-Check the returned `outcomes`: each carries the Cloudinary `mediaUrl`, the
-`scheduleDate` in UTC, the `accountIds` and the exact `summary`. Confirm the
-schedule dates land where you expect in local time.
+Check `columnsWritten` carries what you expect and `unknownColumns` is empty.
+Then set `DRY_RUN=false` and fire one more to see the row land.
 
-Then a live run of one or two posts:
+Once all six look right, disable the six n8n workflows. Leave them disabled
+rather than deleted for a week or so, in case you want to compare.
 
-```bash
-curl -X POST -H "x-webhook-secret: $ADMIN_TOKEN" \
-  "https://<service>.up.railway.app/admin/social/run/avo-shack?images=1"
-```
+### A note on Triage Call Booked
 
-Verify the post appears in the GoHighLevel social planner, scheduled for the
-right local time. Once happy, turn the cron on:
-
-```
-SOCIAL_ENABLED_CLIENTS=avo-shack
-```
-
-`/admin/jobs` then shows the registered job and its `nextRun`. Add slugs as you
-work through the clients; `all` enables every one.
+That one returns `"action":"skipped"` for an email not already in the sheet.
+That is the original behaviour, reproduced deliberately — see
+[N8N-MAPPING.md](N8N-MAPPING.md#triage-call-booked-drops-leads-it-has-not-seen-before).
+If you would rather capture those leads, change `onMissingRow` to `'append'`
+for that event in `src/lead-tracker/events.ts` and redeploy.
 
 ### Rollback
 
-`SOCIAL_ENABLED_CLIENTS=none` stops every cron on the next deploy without
-touching anything else. `SOCIAL_DRY_RUN=true` keeps the jobs running but stops
-them reaching GoHighLevel — useful for watching a schedule fire without
-consequences.
+Re-enable the n8n workflows and point GoHighLevel back at the old host.
+Nothing here holds state, so there is nothing to unwind. `DRY_RUN=true` is the
+softer option: the service keeps accepting webhooks but stops writing.
 
-## Scheduling notes
+## Operational notes
 
-- Crons are evaluated in `SCHEDULE_TIMEZONE`, independent of the container
-  clock. The image installs `tzdata` so `Intl` can resolve the zone.
-- A run still in progress skips its next tick rather than starting a second
-  concurrent batch.
-- A 30-image batch makes roughly 90 outbound calls (Drive download, Cloudinary
-  upload, OpenAI completion per image, then one POST each) at a concurrency of
-  4, so expect a couple of minutes. Railway's healthcheck is unaffected; the
-  work happens off the request path.
-- Railway restarts on deploy and on failure. Since nothing is persisted, a
-  restart mid-batch loses the remaining posts for that run — the posts already
-  created in GoHighLevel stay. Re-run that client manually via
-  `/admin/social/run/:slug` if it happens.
+- The image installs `tzdata` so `Intl` can resolve `Australia/Sydney` on
+  Alpine.
+- Each webhook is one sheet read plus one write, typically well under a
+  second. The work happens on the request path, so GoHighLevel sees a real
+  success or failure rather than a blind 200.
+- Writes are serialised per spreadsheet, so a burst of webhooks queues rather
+  than racing. A long queue shows up as slower responses, not duplicate rows.
+- Google 4xx/5xx responses surface as `502` with Google's own message, which
+  is usually enough to tell a permission problem from a renamed tab.

@@ -2,13 +2,16 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { timingSafeEqual } from 'node:crypto';
 import { env } from '../env.js';
 import { logger } from '../logger.js';
-import { ConfigError, HttpError } from '../lib/errors.js';
+import { ConfigError, MissingMatchValueError, describeGoogleError } from '../lib/errors.js';
 import { withLock } from '../lib/mutex.js';
 import { LEAD_EVENTS, leadEventByN8nPath, leadEventBySlug, type LeadEvent } from '../lead-tracker/events.js';
-import { handleLeadEvent, MissingMatchValueError } from '../lead-tracker/handler.js';
-import { allClients, clientBySlug } from '../social-posting/clients.js';
-import { runClient } from '../social-posting/engine.js';
-import { listJobs } from '../scheduler.js';
+import { handleLeadEvent } from '../lead-tracker/handler.js';
+
+function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'unknown error';
+}
 
 /** Constant-time string compare that tolerates differing lengths. */
 function secretMatches(provided: string, expected: string): boolean {
@@ -42,7 +45,7 @@ export function buildServer(): FastifyInstance {
     logger.debug('request', { method: req.method, url: req.url });
   });
 
-  app.setErrorHandler((error, req, reply) => {
+  app.setErrorHandler((error: unknown, req, reply) => {
     const base = { method: req.method, url: req.url };
 
     if (error instanceof MissingMatchValueError) {
@@ -53,15 +56,27 @@ export function buildServer(): FastifyInstance {
       logger.error('configuration error', { ...base, error: error.message });
       return reply.code(503).send({ ok: false, error: error.message });
     }
-    if (error instanceof HttpError) {
-      logger.error('upstream error', { ...base, status: error.status, error: error.message });
-      return reply.code(502).send({ ok: false, error: `upstream ${error.status}`, detail: error.message });
-    }
-    if (error.statusCode && error.statusCode < 500) {
-      return reply.code(error.statusCode).send({ ok: false, error: error.message });
+
+    const google = describeGoogleError(error);
+    if (google) {
+      logger.error('google sheets error', { ...base, status: google.status, error: google.message });
+      return reply
+        .code(502)
+        .send({ ok: false, error: `Google Sheets returned ${google.status}`, detail: google.message });
     }
 
-    logger.error('unhandled error', { ...base, error: error.message, stack: error.stack });
+    // Fastify's own 4xx errors (malformed JSON, unsupported media type, and
+    // so on) carry a usable status and message; pass those through.
+    const statusCode = (error as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500) {
+      return reply.code(statusCode).send({ ok: false, error: messageOf(error) });
+    }
+
+    logger.error('unhandled error', {
+      ...base,
+      error: messageOf(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return reply.code(500).send({ ok: false, error: 'internal error' });
   });
 
@@ -71,19 +86,16 @@ export function buildServer(): FastifyInstance {
     const e = env();
     return {
       ok: true,
-      timezone: e.SCHEDULE_TIMEZONE,
-      dryRun: e.SOCIAL_DRY_RUN,
-      schedulerEnabled: e.SCHEDULER_ENABLED,
+      timezone: e.TIMEZONE,
+      dryRun: e.DRY_RUN,
+      sheetName: e.LEAD_SHEET_NAME,
       configured: {
         google: Boolean(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET && e.GOOGLE_REFRESH_TOKEN),
-        openai: Boolean(e.OPENAI_API_KEY),
-        cloudinary: Boolean(e.CLOUDINARY_CLOUD_NAME),
-        ghlToken: Boolean(e.GHL_API_TOKEN),
         leadSheet: Boolean(e.LEAD_SHEET_ID),
         webhookSecret: Boolean(e.WEBHOOK_SECRET),
         adminToken: Boolean(e.ADMIN_TOKEN),
       },
-      jobs: listJobs(),
+      events: LEAD_EVENTS.length,
     };
   });
 
@@ -131,6 +143,7 @@ export function buildServer(): FastifyInstance {
       url: `/webhooks/lead/${e.slug}`,
       legacyUrl: `/webhook/${e.n8nPath}`,
       matchColumn: e.matchColumn,
+      onMissingRow: e.onMissingRow,
       updateColumns: Object.keys(e.onUpdate),
       appendColumns: Object.keys(e.onAppend),
       notes: e.notes,
@@ -148,49 +161,23 @@ export function buildServer(): FastifyInstance {
     }
   });
 
-  app.get('/admin/social/clients', async () => ({
-    ok: true,
-    clients: allClients().map((c) => ({
-      slug: c.slug,
-      brandName: c.brandName,
-      locationId: c.locationId,
-      folders: c.imageFolderIds.length,
-      accounts: c.accountIds === 'auto' ? 'auto' : c.accountIds.length,
-      postStatus: c.postStatus,
-      schedules: c.schedules,
-      notes: c.notes,
-    })),
-  }));
-
-  app.get('/admin/jobs', async () => ({ ok: true, jobs: listJobs() }));
-
-  app.post('/admin/social/run/:slug', async (req, reply) => {
-    const { slug } = req.params as { slug: string };
-    const client = clientBySlug(slug);
-    if (!client) return reply.code(404).send({ ok: false, error: `unknown client "${slug}"` });
-
-    const query = (req.query ?? {}) as Record<string, string | undefined>;
-    const body = (req.body ?? {}) as Record<string, unknown>;
-
-    const dryRunRaw = query['dryRun'] ?? (body['dryRun'] as string | boolean | undefined);
-    const dryRun =
-      dryRunRaw === undefined ? undefined : ['1', 'true', 'yes', true].includes(dryRunRaw as string | boolean);
-
-    const imageCountRaw = query['images'] ?? (body['images'] as string | number | undefined);
-    const imageCount = imageCountRaw === undefined ? undefined : Number(imageCountRaw);
-    if (imageCount !== undefined && (!Number.isInteger(imageCount) || imageCount < 1)) {
-      return reply.code(400).send({ ok: false, error: '`images` must be a positive integer' });
+  /** The spreadsheet header as the service currently reads it. */
+  app.get('/admin/lead/sheet', async () => {
+    const { readTable } = await import('../integrations/sheets.js');
+    const e = env();
+    if (!e.LEAD_SHEET_ID) {
+      throw new ConfigError('LEAD_SHEET_ID is not set — the lead tracker has no destination spreadsheet');
     }
-
-    const scheduleName = query['schedule'] ?? (body['schedule'] as string | undefined);
-
-    const result = await runClient(client, {
-      ...(scheduleName ? { scheduleName } : {}),
-      ...(dryRun === undefined ? {} : { dryRun }),
-      ...(imageCount === undefined ? {} : { imageCount }),
-    });
-
-    return reply.code(200).send({ ok: true, result });
+    const table = await readTable(e.LEAD_SHEET_ID, e.LEAD_SHEET_NAME);
+    const mapped = new Set(LEAD_EVENTS.flatMap((ev) => [...Object.keys(ev.onUpdate), ...Object.keys(ev.onAppend)]));
+    return {
+      ok: true,
+      sheetName: e.LEAD_SHEET_NAME,
+      rowCount: table.rows.length,
+      header: table.header,
+      /** Columns the events write that the sheet does not have — a live check. */
+      missingFromSheet: [...mapped].filter((c) => !table.header.includes(c)),
+    };
   });
 
   return app;

@@ -34,6 +34,16 @@ export interface LeadEvent {
   matchValue: FieldMapper;
   onUpdate: FieldMap;
   onAppend: FieldMap;
+  /**
+   * What to do when no row matches. Taken from each source workflow's lookup
+   * node: with `alwaysOutputData` on, an empty lookup still emitted an item,
+   * the IF went false and the append branch ran (`append`). With it off the
+   * node emitted nothing, neither branch ran, and the lead was dropped
+   * (`skip`).
+   */
+  onMissingRow: 'append' | 'skip';
+  /** Shown in the response when a lead is skipped. */
+  missingRowNote?: string;
   notes?: string;
 }
 
@@ -99,6 +109,7 @@ export const LEAD_EVENTS: LeadEvent[] = [
     n8nPath: 'b7cfa33b-4a60-41ea-8b89-23cac76f335a',
     matchColumn: 'EMAIL',
     matchValue: pick('email'),
+    onMissingRow: 'append',
     onUpdate: {
       EMAIL: pick('email'),
       'Application Completed': constant('Yes'),
@@ -125,6 +136,7 @@ export const LEAD_EVENTS: LeadEvent[] = [
     n8nPath: '57ec9f62-fdfa-48ac-b7e8-7cfda0cf5086',
     matchColumn: 'EMAIL',
     matchValue: pick('email'),
+    onMissingRow: 'append',
     onUpdate: {
       'Booked Call Strategy': constant(''),
       'Onboarded To PEE': constant('Yes'),
@@ -143,6 +155,7 @@ export const LEAD_EVENTS: LeadEvent[] = [
     n8nPath: '1c3ea975-d68b-43f6-839a-859d39e29b8f',
     matchColumn: 'EMAIL',
     matchValue: pick('email'),
+    onMissingRow: 'append',
     onUpdate: {
       Name: pick('name'),
       'PHONE NUMBER': pick('phone'),
@@ -180,6 +193,7 @@ export const LEAD_EVENTS: LeadEvent[] = [
     n8nPath: '7fa7f14d-abe9-4b1d-ab92-47507dc01f31',
     matchColumn: 'EMAIL',
     matchValue: pick('email'),
+    onMissingRow: 'append',
     onUpdate: {
       'Booked Call Strategy': constant('Yes'),
       [COL_STRATEGY_FUNNEL]: constant('Yes'),
@@ -198,6 +212,10 @@ export const LEAD_EVENTS: LeadEvent[] = [
     n8nPath: 'ca65bbff-4b05-4c0d-9c32-4de734336cd5',
     matchColumn: 'EMAIL',
     matchValue: pick('email'),
+    // Its lookup node is the only one with alwaysOutputData off.
+    onMissingRow: 'skip',
+    missingRowNote:
+      'Reproduced from the source workflow: its lookup node had alwaysOutputData off, so an email not already in the sheet reached neither the update nor the append branch. Change onMissingRow to "append" in src/lead-tracker/events.ts to capture these leads instead.',
     onUpdate: {
       Name: fromExistingRow('Name'),
       'PHONE NUMBER': fromExistingRow('PHONE NUMBER'),
@@ -218,7 +236,7 @@ export const LEAD_EVENTS: LeadEvent[] = [
       Creative: pick('contact.lastAttributionSource.utmContent'),
       'Booked Call': constant('Booked'),
     },
-    notes: 'Its lookup node had alwaysOutputData off, so an unseen email reached no branch at all and the lead was dropped. Here it appends.',
+    notes: 'Its lookup node had alwaysOutputData off, so an unseen email was dropped. Reproduced — see onMissingRow above.',
   },
   {
     slug: 'triage-call-showed',
@@ -226,6 +244,7 @@ export const LEAD_EVENTS: LeadEvent[] = [
     n8nPath: '42a66325-4037-4f75-a3e5-5edecde0cd83',
     matchColumn: 'EMAIL',
     matchValue: pick('email'),
+    onMissingRow: 'append',
     onUpdate: {
       'Showed Up / No Show': pick('customData.Appt_Status'),
     },

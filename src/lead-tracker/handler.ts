@@ -1,28 +1,25 @@
 import { env } from '../env.js';
 import { logger as rootLogger } from '../logger.js';
-import { ConfigError } from '../lib/errors.js';
+import { ConfigError, MissingMatchValueError } from '../lib/errors.js';
 import { appendRow, findRow, readTable, updateRowCells, type SheetTable } from '../integrations/sheets.js';
 import type { FieldMap, LeadEvent, MapContext } from './events.js';
 
 /**
  * Applies one lead event to the tracker spreadsheet: look the lead up by
- * email, then update that row or append a new one.
+ * email, then update that row, append a new one, or — where the source
+ * workflow did — do nothing.
  */
 
 export interface LeadResult {
   event: string;
-  action: 'updated' | 'appended';
+  action: 'updated' | 'appended' | 'skipped';
   matchValue: string;
   rowNumber?: number;
   columnsWritten: string[];
   unknownColumns: string[];
-}
-
-export class MissingMatchValueError extends Error {
-  constructor(readonly column: string) {
-    super(`Webhook payload has no ${column} value to match on`);
-    this.name = 'MissingMatchValueError';
-  }
+  dryRun: boolean;
+  /** Set when `action` is `skipped`, explaining why. */
+  reason?: string;
 }
 
 function render(map: FieldMap, ctx: MapContext): Record<string, string> {
@@ -71,7 +68,8 @@ export async function handleLeadEvent(
   port: SheetPort = livePort,
 ): Promise<LeadResult> {
   const log = rootLogger.child({ workflow: 'lead-tracker', event: event.slug });
-  const timeZone = env().SCHEDULE_TIMEZONE;
+  const timeZone = env().TIMEZONE;
+  const dryRun = env().DRY_RUN;
 
   // Validate the payload before the configuration, so a malformed webhook gets
   // a 400 that names the real problem rather than a 503 about the spreadsheet.
@@ -92,6 +90,19 @@ export async function handleLeadEvent(
 
   if (existingRow) {
     const cells = render(event.onUpdate, { body, existing: existingRow.values, timeZone });
+    if (dryRun) {
+      log.info('dry run: would update row', { matchValue, rowNumber: existingRow.rowNumber, cells });
+      return {
+        event: event.slug,
+        action: 'updated',
+        matchValue,
+        rowNumber: existingRow.rowNumber,
+        columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
+        unknownColumns: Object.keys(cells).filter((c) => !table.header.includes(c)),
+        dryRun,
+      };
+    }
+
     const { updated, unknownColumns } = await port.update(
       spreadsheetId,
       sheetTitle,
@@ -107,10 +118,43 @@ export async function handleLeadEvent(
       rowNumber: existingRow.rowNumber,
       columnsWritten: updated,
       unknownColumns,
+      dryRun,
+    };
+  }
+
+  // No matching row. Five of the six source workflows append here; one does
+  // nothing, and that difference is reproduced per event.
+  if (event.onMissingRow === 'skip') {
+    log.warn('no matching row; skipping, as the source workflow did', {
+      matchValue,
+      note: event.missingRowNote,
+    });
+    return {
+      event: event.slug,
+      action: 'skipped',
+      matchValue,
+      columnsWritten: [],
+      unknownColumns: [],
+      dryRun,
+      reason:
+        event.missingRowNote ??
+        'The source n8n workflow took no action when the email was not already in the sheet.',
     };
   }
 
   const cells = render(event.onAppend, { body, timeZone });
+  if (dryRun) {
+    log.info('dry run: would append row', { matchValue, cells });
+    return {
+      event: event.slug,
+      action: 'appended',
+      matchValue,
+      columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
+      unknownColumns: Object.keys(cells).filter((c) => !table.header.includes(c)),
+      dryRun,
+    };
+  }
+
   const { unknownColumns } = await port.append(spreadsheetId, sheetTitle, table.header, cells);
   log.info('row appended', { matchValue, columns: Object.keys(cells).length });
   return {
@@ -119,5 +163,8 @@ export async function handleLeadEvent(
     matchValue,
     columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
     unknownColumns,
+    dryRun,
   };
 }
+
+export { MissingMatchValueError };

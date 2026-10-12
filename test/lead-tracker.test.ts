@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useTestEnv } from './helpers.js';
 import { LEAD_EVENTS, leadEventByN8nPath, leadEventBySlug } from '../src/lead-tracker/events.js';
-import { handleLeadEvent, MissingMatchValueError, type SheetPort } from '../src/lead-tracker/handler.js';
+import { handleLeadEvent, type SheetPort } from '../src/lead-tracker/handler.js';
+import { MissingMatchValueError } from '../src/lib/errors.js';
 import type { SheetTable } from '../src/integrations/sheets.js';
 
 const HEADER = [
@@ -276,7 +277,7 @@ describe('triage-call-booked mapping', () => {
     });
   });
 
-  it('appends an unseen lead instead of dropping it, unlike the n8n original', async () => {
+  it('takes no action on an unseen lead, reproducing the source workflow', async () => {
     const { port, log } = makePort([]);
     const result = await handleLeadEvent(
       leadEventBySlug('triage-call-booked')!,
@@ -284,22 +285,18 @@ describe('triage-call-booked mapping', () => {
         full_name: 'Dee Park',
         phone: '+61433333333',
         email: 'dee@example.com',
-        contact: {
-          attributionSource: { campaign: 'c2', utmMedium: 'm2' },
-          lastAttributionSource: { utmContent: 'last-creative' },
-        },
+        contact: { attributionSource: { campaign: 'c2', utmMedium: 'm2' } },
         customData: { 'Survey Submitted': '3/4/2026 11:00:00 am' },
       },
       port,
     );
 
-    expect(result.action).toBe('appended');
-    expect(log.appends[0]).toMatchObject({
-      Name: 'Dee Park',
-      EMAIL: 'dee@example.com',
-      Creative: 'last-creative',
-      'Booked Call': 'Booked',
-    });
+    // Its lookup node had alwaysOutputData off, so neither the update nor the
+    // append branch ran and the lead was dropped.
+    expect(result.action).toBe('skipped');
+    expect(result.reason).toMatch(/alwaysOutputData off/);
+    expect(log.appends).toHaveLength(0);
+    expect(log.updates).toHaveLength(0);
   });
 });
 
@@ -326,5 +323,70 @@ describe('pee-created mapping', () => {
     const { port, log } = makePort([{ rowNumber: 5, values: { EMAIL: 'fi@example.com', 'Booked Call Strategy': 'Yes' } }]);
     await handleLeadEvent(leadEventBySlug('pee-created')!, { email: 'fi@example.com' }, port);
     expect(log.updates[0]?.cells).toEqual({ 'Booked Call Strategy': '', 'Onboarded To PEE': 'Yes' });
+  });
+});
+
+describe('onMissingRow, taken from each workflow lookup node', () => {
+  it('matches the alwaysOutputData flag in the export', () => {
+    const bySlug = Object.fromEntries(LEAD_EVENTS.map((e) => [e.slug, e.onMissingRow]));
+    expect(bySlug).toEqual({
+      'pee-optin': 'append',
+      'pee-created': 'append',
+      'pee-created-lovable': 'append',
+      'strategy-call-booked': 'append',
+      // The only one whose lookup node had alwaysOutputData off.
+      'triage-call-booked': 'skip',
+      'triage-call-showed': 'append',
+    });
+  });
+
+  it('explains itself in the response for the one event that skips', () => {
+    const event = LEAD_EVENTS.find((e) => e.onMissingRow === 'skip');
+    expect(event?.slug).toBe('triage-call-booked');
+    expect(event?.missingRowNote).toMatch(/src\/lead-tracker\/events\.ts/);
+  });
+
+  it('still updates a lead that does exist, for the skipping event', async () => {
+    const { port, log } = makePort([{ rowNumber: 3, values: { EMAIL: 'in@sheet.com', Name: 'In Sheet' } }]);
+    const result = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { email: 'in@sheet.com', contact: { attributionSource: {} }, customData: {} },
+      port,
+    );
+
+    expect(result.action).toBe('updated');
+    expect(log.updates[0]?.cells['Booked Call']).toBe('Booked');
+  });
+});
+
+describe('DRY_RUN', () => {
+  it('reports what it would do without writing to the sheet', async () => {
+    useTestEnv({ DRY_RUN: 'true' });
+    const { port, log } = makePort([]);
+
+    const result = await handleLeadEvent(
+      leadEventBySlug('strategy-call-booked')!,
+      { email: 'dry@example.com', full_name: 'Dry Run' },
+      port,
+    );
+
+    expect(result).toMatchObject({ action: 'appended', dryRun: true });
+    expect(result.columnsWritten).toContain('Booked Call Strategy');
+    expect(log.appends).toHaveLength(0);
+    expect(log.updates).toHaveLength(0);
+  });
+
+  it('reports a would-be update without writing', async () => {
+    useTestEnv({ DRY_RUN: 'true' });
+    const { port, log } = makePort([{ rowNumber: 2, values: { EMAIL: 'dry@example.com' } }]);
+
+    const result = await handleLeadEvent(
+      leadEventBySlug('strategy-call-booked')!,
+      { email: 'dry@example.com' },
+      port,
+    );
+
+    expect(result).toMatchObject({ action: 'updated', rowNumber: 2, dryRun: true });
+    expect(log.updates).toHaveLength(0);
   });
 });

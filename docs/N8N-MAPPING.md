@@ -1,179 +1,137 @@
 # n8n → code mapping
 
-What each of the 29 exported workflow files became, what behaviour changed, and
-the defects found while porting.
+The six lead workflows, what each writes, and the quirks reproduced from the
+export.
 
-## File inventory
+## The shared shape
 
-### Social posting — 12 files, 5 real locations
-
-Every one of these was the same 16-node graph (cron → GHL location fetch →
-Drive image list → random pick → Drive download → Cloudinary upload → enhance
-→ brand brief → GPT caption → build payload → POST to GHL), duplicated and
-hand-edited per client. They are now one engine plus a config entry.
-
-| File | Workflow name | Became |
-| --- | --- | --- |
-| `0Qi0jdNZ2ZaRtSzD` | Junction Cafe GHL + N8N Socai Media Posting | client `junction-cafe` |
-| `3FUN0IaRvnJRa6ye` | Spanish Paella … Monthly | client `spanish-paella` |
-| `UziQikocYoifIS0N` | Avo Shack … Monthly | client `avo-shack` |
-| `oocoqoafCHhObq1N` | Madame Cue … | client `madame-cue` |
-| `ywrfXE1qReeYxvL2` | Madison Ave … | client `madison-ave` |
-| `eVtX1Ec9mO1vQg52` | Junction Cafe … | **dropped** — targets Spanish Paella's location while loading Avo Shack's brand brief |
-| `SkjeLFXpWNDKCMSF` | Junction Cafe … copy | **dropped** — byte-identical to the above |
-| `2Xf31aVnLL2FtJAf` | Spanish Paella … | **dropped** — same location as `3FUN0IaR`, weekday cron `0 10 * * 1-5`; running both double-posts |
-| `6aLYMdgYY0wWU9dq` | Spanish Paella … Monthly (Single Day) | **dropped** — same location, cron `0 10 26 * *` |
-| `s5KTjcIYG10RWoE4` | GHL + N8N Socai Media Posting | **dropped** — earlier Avo Shack revision, no brand brief |
-| `xoPDsy9DmGN4gtyj` | GHL + N8N Socai Media Posting Update | **dropped** — Avo Shack revision |
-| `NLmHTl2oXzJjLFDb`, `JVlmagg17Oj8qjJf` | GHL + N8N (Update) | **dropped** — 12-node Avo Shack predecessors, no Cloudinary step |
-
-Five clients, three Spanish Paella schedules and three Avo Shack copies: the
-export had **three live crons pointed at the same GoHighLevel location** for
-both. Only one schedule per client is configured here. If a client genuinely
-needs two cadences, add a second entry to its `schedules` array.
-
-### Lead tracker — 6 files
-
-All six were webhook → look up row by `EMAIL` → update or append, against the
-same spreadsheet (`1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw`, tab `PEE `).
-Only the webhook path and the column mapping differed, so only those are data
-now — see [`src/lead-tracker/events.ts`](../src/lead-tracker/events.ts).
-
-| File | Slug | Original webhook path |
-| --- | --- | --- |
-| `0h49jZmxl5RdpPgn` | `pee-optin` | `b7cfa33b-4a60-41ea-8b89-23cac76f335a` |
-| `CfH7Lc5XbT0HYxgr` | `pee-created` | `57ec9f62-fdfa-48ac-b7e8-7cfda0cf5086` |
-| `K0eEuL7CwPX7Tqdt` | `pee-created-lovable` | `1c3ea975-d68b-43f6-839a-859d39e29b8f` |
-| `ZH0wQZ7JHzBHUmb9` | `strategy-call-booked` | `7fa7f14d-abe9-4b1d-ab92-47507dc01f31` |
-| `fDNiAbyCeuHsUwMr` | `triage-call-booked` | `ca65bbff-4b05-4c0d-9c32-4de734336cd5` |
-| `Sq3QaIgb3jpbU6yk` | `triage-call-showed` | `42a66325-4037-4f75-a3e5-5edecde0cd83` |
-
-Those paths stay mounted at `/webhook/<uuid>`, so the GoHighLevel side only
-needs its host swapped.
-
-### Not in scope for this pass
-
-Per your call, these were left out. Each was a template or demo rather than a
-running automation:
-
-| File | Why it was skipped |
-| --- | --- |
-| `xLCdC3OYKpIOmx3o` + 2 copies | GHL contact notes → Sheets. Hardcoded `page=77` on a single API call, so it only ever read one page of contacts. |
-| `3kyRzdcKBReipDI5` | Bi-daily invoice/transaction sync. Unfinished: `googleSheetId` is `<__PLACEHOLDER_VALUE__…>` and most field mappings are empty strings. |
-| `PwclcL17U8AcCY3y` | HL + N8N manual upload form. Template with `<YOUR LOCATION ID>` placeholders; its `Set all`, `Set Image` and `Merge` nodes are not wired to anything. |
-| `XaYE8UYmG7IGpVlV` | CSM Operations Assistant (WhatsApp). Every config value is a placeholder, including the ClickUp team and list IDs. |
-| `s3gizEqgOkXoeV9H` | WhatsApp image studio. Contains literal `"Bearer API KEY"`, `LOCATIONID`, `ACCOUNTID`, `USERID` strings. |
-| `TJRa1Loc5Oso1VvH` | The stock n8n "Daily AI Summary" demo — RSS → agent → Gmail, with its tutorial sticky notes intact. |
-| `ozF6gksFTr4E3xaY` | Social Media Scheduler. Superseded and broken: its Drive node has no folder filter, and `Select & Rotate Content` initialises `rotationHistory = {}` on every run, so its 30-day reuse check can never fire. |
-| `Wi99nMd3NxtgGPQE` | Empty — zero nodes. |
-
-The architecture here takes them without restructuring: another `src/<family>/`
-module, a route or a cron entry.
-
-## Defects found in the originals
-
-### Scheduled post times were in the wrong timezone
-
-`Create Post` built its dates with `new Date(y, m, d + 1, 10, 0)` — the n8n
-host's *local* clock — then called `.toISOString()`, in a helper named
-`nextNDatesUTC`. On a UTC host that scheduled Australian cafe posts for 10:00
-UTC, i.e. 8pm or 9pm Sydney depending on daylight saving.
-
-Now explicit: `SCHEDULE_TIMEZONE` (default `Australia/Sydney`) is applied via
-`Intl`, so 10:00 means 10:00 locally on both sides of a DST change.
-[`src/lib/dates.ts`](../src/lib/dates.ts), covered by `test/dates.test.ts`.
-
-### Madison Ave could never post
-
-Its `ACCOUNT_IDS` array was empty, so every payload it built carried
-`accountIds: []` and GoHighLevel would reject all 30 posts. It is configured
-`accountIds: 'auto'` here, which reads the live account list from
-`/social-media-posting/{locationId}/accounts` and skips expired connections.
-
-### Madame Cue carries the wrong API token
-
-Its `Post GHL` node posts to `mqdAQkVtmwpoXe1eJ828` with Junction Cafe's
-location-scoped PIT in the `Authorization` header. In n8n the node also had an
-OAuth2 credential named "Madame Cue" attached, which is what actually authorised
-the request — the hand-written header was dead weight. This service sends only
-the configured token, so Madame Cue needs its own PIT before it can post. See
-[SECRETS.md](SECRETS.md#which-token-each-client-needs).
-
-### Madame Cue fires once a year
-
-Its cron is `0 10 4 3 *` — 10:00 on 4 March, annually. Every sibling workflow
-uses a day-of-month pattern, so this looks like a leftover test value. It is
-reproduced as-is rather than silently changed. For a monthly batch:
+All six were identical in structure:
 
 ```
-SOCIAL_CLIENT_OVERRIDES={"madame-cue":{"schedules":[{"name":"monthly","cron":"0 10 4 * *","imageCount":30,"minImages":30}]}}
+Webhook (POST)
+  └─ Get row(s) in sheet   filter: EMAIL = {{ $json.body.email }}
+       └─ If  row_number exists / notEmpty
+            ├─ true  → Update row in sheet
+            └─ false → Append row in sheet
 ```
 
-or edit `src/social-posting/clients.ts`.
+Same spreadsheet throughout: `1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw`
+("PEE Optin - Utm"), tab gid `2130596273`, whose title is `PEE ` — with a
+trailing space, which the A1 ranges have to quote.
 
-### Per-platform captions were generated and thrown away
-
-The prompt asks for Instagram, Facebook, GMB and TikTok variants, and `Code2`
-parsed all four. `Create Post` then sent only the base `caption` to every
-account, so the tailored copy — hashtags for Instagram, no emoji for GMB — was
-never used, and the TikTok variant was dropped entirely.
-
-The variants are preserved. Setting `perPlatformCaptions: true` on a client
-sends one post per platform carrying that platform's caption; the default stays
-faithful to the old single-post behaviour.
-
-### "Fresh from The Avo Shack" on every brand
-
-The caption fallback in `Create Post` was hardcoded to `The Avo Shack` in all
-twelve files, including Junction Cafe's and Madame Cue's. It now uses the
-client's own `brandName`.
-
-### Private-event promotion never happened
-
-The prompt documents "Promote Private Events (bool ~50% of posts)" and branches
-on it, but no upstream node ever set `promote_private_event`, so it evaluated
-to `false` on every run and the private-catering CTA never appeared.
-
-Now driven by `promotePrivateEventProbability`, defaulting to `0.5` to match the
-prompt's stated intent. Set it to `0` per client to restore the old behaviour.
-
-### `triage-call-booked` silently dropped new leads
-
-Its "Get row(s) in sheet" node had `alwaysOutputData` **off**, unlike the other
-five. With no matching row the node emitted nothing, the `If` never ran, and
-neither the update nor the append branch fired — the lead vanished with the
-execution recorded as successful. It appends here, like its siblings.
-
-### Row updates reverted concurrent manual edits
-
-n8n's "Update row in sheet" rewrote the whole row it had read. Anyone editing
-another column in that row between the read and the write lost their change.
-Only the mapped cells are written now, via a batched range update.
-
-### `pee-created` blanks a column
-
-Its update branch writes `''` to `Booked Call Strategy` while setting
-`Onboarded To PEE` to `Yes` — so onboarding a client clears whether they booked
-a strategy call. This is **reproduced as-is**; it may well be a mistake. To stop
-it, remove that line from `onUpdate` in
+Only the webhook path and the two column mappings differed between them, so
+those are the only per-event data in
 [`src/lead-tracker/events.ts`](../src/lead-tracker/events.ts).
 
-### Form field names carry trailing spaces
+| Source file | Slug | Webhook path | `onMissingRow` |
+| --- | --- | --- | --- |
+| `0h49jZmxl5RdpPgn` | `pee-optin` | `b7cfa33b-4a60-41ea-8b89-23cac76f335a` | append |
+| `CfH7Lc5XbT0HYxgr` | `pee-created` | `57ec9f62-fdfa-48ac-b7e8-7cfda0cf5086` | append |
+| `K0eEuL7CwPX7Tqdt` | `pee-created-lovable` | `1c3ea975-d68b-43f6-839a-859d39e29b8f` | append |
+| `ZH0wQZ7JHzBHUmb9` | `strategy-call-booked` | `7fa7f14d-abe9-4b1d-ab92-47507dc01f31` | append |
+| `fDNiAbyCeuHsUwMr` | `triage-call-booked` | `ca65bbff-4b05-4c0d-9c32-4de734336cd5` | **skip** |
+| `Sq3QaIgb3jpbU6yk` | `triage-call-showed` | `42a66325-4037-4f75-a3e5-5edecde0cd83` | append |
 
-The GHL survey fields arrive as
-`What’s your approx monthly revenue from private events? ` — with a trailing
-space and a curly apostrophe — while the sheet column has no trailing space.
-The mappers try both spellings, so a tidy-up on the GHL side will not silently
+## What each event writes
+
+**pee-optin** — Update: `Application Completed` = Yes, `EMAIL`, and the two
+survey answers. Append: name, phone, email, campaign/audience/creative from
+`contact.attributionSource` (creative from `lastAttributionSource`), `PIC`,
+both survey answers, `Application Completed` = Yes, and
+`OPTED IN DATE / TIME` from `customData['Survey Submitted Date']`.
+
+**pee-created** — Update: `Onboarded To PEE` = Yes, and `Booked Call Strategy`
+set to an empty string. Append: name, phone, email, `Onboarded To PEE` = Yes.
+
+**pee-created-lovable** — The Lovable funnel. Its answers arrive nested under
+`answers`, keyed by the full question text with a trailing ` *`.
+`OPTED IN DATE / TIME` comes from `submitted_at`, formatted. Update and append
+write the same thirteen columns.
+
+**strategy-call-booked** — Both branches set `Booked Call Strategy` = Yes and
+`Strategy Call Booked\nThrough Funnel` = Yes. That second column name contains
+a literal newline in the sheet header, and is reproduced exactly.
+
+**triage-call-booked** — Update: campaign/audience/creative from
+`contact.attributionSource`, `OPTED IN DATE / TIME` from
+`customData['Survey Submitted']`, `Booked Call` = Booked, plus `Name`,
+`PHONE NUMBER` and `EMAIL` written back from the row it just read (the
+original's `{{ $json.Name }}` self-references — no-ops, kept for fidelity).
+Append exists in the workflow but was unreachable; see below.
+
+**triage-call-showed** — Update: `Showed Up / No Show` from
+`customData.Appt_Status`, verbatim. Append defaults it to `Showed`.
+
+## Quirks reproduced from the export
+
+These are faithful to the workflows, not improvements. Each is a one-line
+change in `src/lead-tracker/events.ts` if you want it different.
+
+### triage-call-booked drops leads it has not seen before
+
+Its `Get row(s) in sheet` node is the only one of the six with
+`alwaysOutputData` **off**. With that flag on — as the other five have it — an
+empty lookup still emits one item, `row_number` is absent, the `If` goes false
+and the append branch runs. With it off the node emits nothing at all, so
+neither branch runs and the webhook completes having done nothing. The
+execution is recorded as successful.
+
+So any lead whose email is not already in the sheet when the triage booking
+fires is lost. The workflow has a fully wired append branch that can never be
+reached.
+
+This service reproduces that, with `onMissingRow: 'skip'`. The difference is
+that it is no longer silent: the response is
+
+```json
+{ "ok": true, "action": "skipped", "matchValue": "…", "reason": "Reproduced from the source workflow: …" }
+```
+
+and it is logged at `warn`. Set `onMissingRow: 'append'` for that event to
+capture the leads instead — the append mapping is already there.
+
+### pee-created blanks "Booked Call Strategy"
+
+Its update branch writes `''` to `Booked Call Strategy` while setting
+`Onboarded To PEE` = Yes. Onboarding a client therefore clears whether they
+had booked a strategy call. Reproduced as-is. To stop it, remove that line
+from `onUpdate` for `pee-created`.
+
+### Survey field names carry trailing spaces
+
+The GoHighLevel form fields arrive as
+`What’s your approx monthly revenue from private events? ` — trailing space,
+curly apostrophe — while the sheet column has no trailing space. The mappers
+try both spellings, so tidying the GoHighLevel side later will not quietly
 start writing blanks.
 
-## Behaviour deliberately kept
+### "OPTED IN DATE / TIME" formatting
 
-- Emoji are stripped from post summaries (`stripEmojis: true`), because GHL's
-  Google Business Profile channel rejects them. Per-client switch.
-- Posts are created with `status: scheduled` and `mediaOptimization: true`.
-- Images are picked uniformly at random, with no reuse history.
-- A caption that fails to parse falls back to `"Default caption"`, matching the
-  `Code2` node. It is logged at `warn` with the model's raw output.
-- The legacy v1 `locations/{id}` call is still made when `GHL_AGENCY_JWT` is
-  set. Its body went unused in n8n, so it is treated as an advisory
-  pre-flight: a failure is recorded as a warning and the run continues.
+Two different sources. Most events copy a GoHighLevel `customData` string
+straight through. The Lovable event formats `submitted_at` with
+`toLocaleString('en-AU', …).replace(',', '')`, which yields
+`15/07/2026 2:05:06 pm` — `en-AU` applies its own short-date pattern, so day
+and month are zero-padded despite `numeric`. Reproduced exactly, since that is
+the shape already in the sheet. The zone is `TIMEZONE`, defaulting to
+`Australia/Sydney` — the one value declared anywhere in the export.
+
+## Deliberate differences
+
+Two, both invisible in what lands in the sheet:
+
+- **Targeted cell writes.** An update writes only the columns the event maps,
+  as individual ranges, rather than rewriting the row. Same values, but a
+  column a human edited in the same row between the read and the write is not
+  clobbered.
+- **Lenient email matching.** Trimmed and case-insensitive, because the sheet
+  holds inconsistently cased addresses. n8n's lookup was stricter, so a few
+  leads that previously appended as duplicates will now correctly update the
+  existing row. An empty email matches nothing and is rejected with a 400.
+
+## Not included
+
+The rest of the export — social media posting, contact notes sync, invoice
+sync, and the WhatsApp/form/news templates — is out of scope for this service.
+Their redacted copies are not kept here; the originals are in the workflow
+export, and a previous revision of this repository contains a full
+implementation of the social posting side if it is ever wanted.
