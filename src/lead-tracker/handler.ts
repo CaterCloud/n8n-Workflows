@@ -23,6 +23,12 @@ export interface LeadResult {
    * not sending what the mapping expects.
    */
   emptyColumns: string[];
+  /**
+   * Columns left alone on an update because the webhook carried no value and
+   * the sheet already held one. Without this, a sparse payload would blank
+   * data that is already correct.
+   */
+  preservedColumns: string[];
   dryRun: boolean;
   /** Set when `action` is `skipped`, explaining why. */
   reason?: string;
@@ -40,6 +46,32 @@ const emptyOf = (cells: Record<string, string>): string[] =>
   Object.entries(cells)
     .filter(([, v]) => v === '')
     .map(([k]) => k);
+
+/**
+ * Drops the cells an update should not write: those whose mapper produced an
+ * empty string because the payload lacked the field. A mapper marked `literal`
+ * is writing a fixed value on purpose, so it is always kept — that is what
+ * preserves pee-created's deliberate blanking of "Booked Call Strategy".
+ */
+function protectExisting(
+  cells: Record<string, string>,
+  map: FieldMap,
+  existing: Record<string, string>,
+): { toWrite: Record<string, string>; preserved: string[] } {
+  const toWrite: Record<string, string> = {};
+  const preserved: string[] = [];
+
+  for (const [column, value] of Object.entries(cells)) {
+    if (value !== '' || map[column]?.literal) {
+      toWrite[column] = value;
+      continue;
+    }
+    // Empty, and not deliberate. Note it only when there was something to keep.
+    if ((existing[column] ?? '').trim() !== '') preserved.push(column);
+  }
+
+  return { toWrite, preserved };
+}
 
 function sheetId(): string {
   const id = env().LEAD_SHEET_ID;
@@ -100,7 +132,17 @@ export async function handleLeadEvent(
   const existingRow = findRow(table, event.matchColumn, matchValue);
 
   if (existingRow) {
-    const cells = render(event.onUpdate, { body, existing: existingRow.values, timeZone });
+    const rendered = render(event.onUpdate, { body, existing: existingRow.values, timeZone });
+    const { toWrite: cells, preserved } = protectExisting(rendered, event.onUpdate, existingRow.values);
+
+    if (preserved.length) {
+      log.info('kept existing values the webhook did not carry', {
+        matchValue,
+        rowNumber: existingRow.rowNumber,
+        preservedColumns: preserved,
+      });
+    }
+
     if (dryRun) {
       log.info('dry run: would update row', { matchValue, rowNumber: existingRow.rowNumber, cells });
       return {
@@ -110,7 +152,8 @@ export async function handleLeadEvent(
         rowNumber: existingRow.rowNumber,
         columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
         unknownColumns: Object.keys(cells).filter((c) => !table.header.includes(c)),
-        emptyColumns: emptyOf(cells),
+        emptyColumns: emptyOf(rendered),
+        preservedColumns: preserved,
         dryRun,
       };
     }
@@ -126,7 +169,8 @@ export async function handleLeadEvent(
       matchValue,
       rowNumber: existingRow.rowNumber,
       columns: updated.length,
-      empty: emptyOf(cells).length,
+      empty: emptyOf(rendered).length,
+      preserved: preserved.length,
     });
     return {
       event: event.slug,
@@ -135,7 +179,8 @@ export async function handleLeadEvent(
       rowNumber: existingRow.rowNumber,
       columnsWritten: updated,
       unknownColumns,
-      emptyColumns: emptyOf(cells),
+      emptyColumns: emptyOf(rendered),
+      preservedColumns: preserved,
       dryRun,
     };
   }
@@ -154,6 +199,7 @@ export async function handleLeadEvent(
       columnsWritten: [],
       unknownColumns: [],
       emptyColumns: [],
+      preservedColumns: [],
       dryRun,
       reason:
         event.missingRowNote ??
@@ -171,6 +217,7 @@ export async function handleLeadEvent(
       columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
       unknownColumns: Object.keys(cells).filter((c) => !table.header.includes(c)),
       emptyColumns: emptyOf(cells),
+      preservedColumns: [],
       dryRun,
     };
   }
@@ -185,6 +232,7 @@ export async function handleLeadEvent(
     columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
     unknownColumns,
     emptyColumns: empty,
+    preservedColumns: [],
     dryRun,
   };
 }

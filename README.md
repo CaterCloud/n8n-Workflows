@@ -65,8 +65,9 @@ and watching real payloads arrive before anything is committed to the sheet.
 
 Responses are JSON: `{"ok":true,"action":"updated","rowNumber":42,...}`.
 
-Each response also carries `emptyColumns` — mapped columns the payload had no
-value for. A long list there means the sender is not sending what the mapping
+Each response also carries `emptyColumns` (mapped columns the payload had no
+value for) and `preservedColumns` (columns left alone on an update because the
+webhook carried nothing and the sheet already held a value). A long list there means the sender is not sending what the mapping
 expects, which is far easier to spot than a quietly blank cell. To see the
 payload itself, set `WEBHOOK_CAPTURE=true`, re-send, and read
 `/admin/lead/recent`; turn it back off afterwards, since it holds real lead

@@ -182,7 +182,10 @@ describe('pee-optin mapping', () => {
     const { port, log } = makePort([]);
     await handleLeadEvent(leadEventBySlug('pee-optin')!, body, port);
 
-    expect(log.appends[0]).toEqual({
+    // The opt-in time is stamped on arrival, so it is asserted separately.
+    const { 'OPTED IN DATE / TIME': optedIn, ...rest } = log.appends[0] ?? {};
+    expect(optedIn).toMatch(/^\d{2}\/\d{2}\/\d{4} /);
+    expect(rest).toEqual({
       Name: 'Ann Smith',
       'PHONE NUMBER': '+61400000000',
       EMAIL: 'ann@example.com',
@@ -191,7 +194,6 @@ describe('pee-optin mapping', () => {
       Creative: 'carousel-a',
       PIC: 'Sam',
       'Application Completed': 'Yes',
-      'OPTED IN DATE / TIME': '12/10/2026 9:15:00 am',
       'What’s your approx monthly revenue from private events?': '$10k-$20k',
       'Do you currently have a way of generating consistent private event enquiries?': 'No',
     });
@@ -462,6 +464,8 @@ describe('emptyColumns', () => {
     );
 
     expect(result.action).toBe('appended');
+    // "OPTED IN DATE / TIME" is absent: stamped on arrival, never read from
+    // the payload, so it cannot come back empty.
     expect(result.emptyColumns).toEqual([
       'Campaign',
       'Audience',
@@ -469,7 +473,6 @@ describe('emptyColumns', () => {
       'PIC',
       'What’s your approx monthly revenue from private events?',
       'Do you currently have a way of generating consistent private event enquiries?',
-      'OPTED IN DATE / TIME',
     ]);
   });
 
@@ -494,5 +497,137 @@ describe('emptyColumns', () => {
     );
 
     expect(result.emptyColumns).toEqual([]);
+  });
+});
+
+describe('opt-in timestamp on PEE Optin', () => {
+  it('stamps the arrival time rather than leaving it blank', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, { email: 'stamp@example.com' }, port);
+
+    const stamped = log.appends[0]?.['OPTED IN DATE / TIME'] ?? '';
+    // dd/mm/yyyy h:mm:ss am — the shape the sheet already uses.
+    expect(stamped).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{1,2}:\d{2}:\d{1,2} (am|pm)$/);
+  });
+
+  it('renders it in the configured zone, not UTC', async () => {
+    const { port, log } = makePort([]);
+    const before = new Date();
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, { email: 'tz@example.com' }, port);
+
+    const [datePart] = (log.appends[0]?.['OPTED IN DATE / TIME'] ?? '').split(' ');
+    const expected = new Intl.DateTimeFormat('en-AU', {
+      timeZone: 'Australia/Sydney',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(before);
+    expect(datePart).toBe(expected);
+  });
+
+  it('is no longer sourced from customData, which GoHighLevel never sent', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      { email: 'ignored@example.com', customData: { 'Survey Submitted Date': '1/1/2020 1:00:00 am' } },
+      port,
+    );
+    expect(log.appends[0]?.['OPTED IN DATE / TIME']).not.toBe('1/1/2020 1:00:00 am');
+  });
+
+  it('no longer reports the opt-in column as empty', async () => {
+    const { port } = makePort([]);
+    const result = await handleLeadEvent(leadEventBySlug('pee-optin')!, { email: 'a@b.com' }, port);
+    expect(result.emptyColumns).not.toContain('OPTED IN DATE / TIME');
+  });
+});
+
+describe('protecting existing values on update', () => {
+  const populated = {
+    EMAIL: 'has@data.com',
+    Name: 'Has Data',
+    'PHONE NUMBER': '61400000000',
+    Campaign: 'Original campaign',
+    Audience: 'Original audience',
+    Creative: 'Original creative',
+    'OPTED IN DATE / TIME': '01/01/2026 9:00:00 am',
+  };
+
+  it('does not blank a populated cell when the webhook omits that field', async () => {
+    const { port, log } = makePort([{ rowNumber: 5, values: populated }]);
+
+    // Triage Call Booked maps Campaign/Audience/Creative/opt-in date, but this
+    // payload carries none of them.
+    const result = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { email: 'has@data.com' },
+      port,
+    );
+
+    expect(result.action).toBe('updated');
+    expect(result.preservedColumns).toEqual(
+      expect.arrayContaining(['Campaign', 'Audience', 'Creative', 'OPTED IN DATE / TIME']),
+    );
+
+    const written = log.updates[0]?.cells ?? {};
+    expect(written).not.toHaveProperty('Campaign');
+    expect(written).not.toHaveProperty('Audience');
+    expect(written).not.toHaveProperty('Creative');
+    expect(written).not.toHaveProperty('OPTED IN DATE / TIME');
+    // The value it does carry still lands.
+    expect(written['Booked Call']).toBe('Booked');
+  });
+
+  it('still writes a value when the webhook does carry one', async () => {
+    const { port, log } = makePort([{ rowNumber: 5, values: populated }]);
+    await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      {
+        email: 'has@data.com',
+        contact: { attributionSource: { campaign: 'NEW campaign', utmMedium: 'NEW audience' } },
+      },
+      port,
+    );
+
+    const written = log.updates[0]?.cells ?? {};
+    expect(written['Campaign']).toBe('NEW campaign');
+    expect(written['Audience']).toBe('NEW audience');
+    expect(written).not.toHaveProperty('Creative');
+  });
+
+  it('keeps a deliberate blank, so pee-created still clears Booked Call Strategy', async () => {
+    const { port, log } = makePort([
+      { rowNumber: 6, values: { EMAIL: 'x@y.com', 'Booked Call Strategy': 'Yes' } },
+    ]);
+    const result = await handleLeadEvent(leadEventBySlug('pee-created')!, { email: 'x@y.com' }, port);
+
+    // constant('') is marked literal, so protection does not apply to it.
+    expect(log.updates[0]?.cells).toEqual({ 'Booked Call Strategy': '', 'Onboarded To PEE': 'Yes' });
+    expect(result.preservedColumns).toEqual([]);
+  });
+
+  it('reports nothing preserved when the existing cell was empty anyway', async () => {
+    const { port, log } = makePort([{ rowNumber: 7, values: { EMAIL: 'blank@y.com', Campaign: '' } }]);
+    const result = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { email: 'blank@y.com' },
+      port,
+    );
+
+    expect(result.preservedColumns).not.toContain('Campaign');
+    expect(log.updates[0]?.cells).not.toHaveProperty('Campaign');
+  });
+
+  it('leaves appends untouched — a new row has nothing to protect', async () => {
+    const { port, log } = makePort([]);
+    const result = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { email: 'new@y.com' },
+      port,
+    );
+    expect(result.preservedColumns).toEqual([]);
+    // triage-call-booked skips unseen emails, so nothing is written at all.
+    expect(result.action).toBe('skipped');
+    expect(log.appends).toHaveLength(0);
   });
 });

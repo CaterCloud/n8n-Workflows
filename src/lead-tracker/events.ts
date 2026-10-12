@@ -21,7 +21,17 @@ export interface MapContext {
   timeZone: string;
 }
 
-export type FieldMapper = (ctx: MapContext) => string;
+export interface FieldMapper {
+  (ctx: MapContext): string;
+  /**
+   * True when this mapper writes a fixed value, so an empty result is
+   * intentional rather than a field missing from the payload. The update path
+   * uses this to tell "the workflow means to blank this" apart from "the
+   * webhook didn't send it", and only protects existing data in the latter case.
+   */
+  literal?: boolean;
+}
+
 export type FieldMap = Record<string, FieldMapper>;
 
 export interface LeadEvent {
@@ -60,7 +70,15 @@ function pick(...paths: string[]): FieldMapper {
   };
 }
 
-const constant = (value: string): FieldMapper => () => value;
+const constant = (value: string): FieldMapper =>
+  Object.assign(() => value, { literal: true });
+
+/**
+ * The moment the webhook arrived, in the configured zone. GoHighLevel does not
+ * send a survey timestamp on the PEE Optin action, so the opt-in time is taken
+ * as receipt time rather than left blank.
+ */
+const receivedNow: FieldMapper = ({ timeZone }) => formatAuDateTime(new Date(), timeZone);
 
 /** Reads a column off the matched row — the `$json.<Column>` self-references. */
 const fromExistingRow =
@@ -127,7 +145,10 @@ export const LEAD_EVENTS: LeadEvent[] = [
       [COL_REVENUE]: SRC_REVENUE,
       [COL_ENQUIRIES]: SRC_ENQUIRIES,
       'Application Completed': constant('Yes'),
-      'OPTED IN DATE / TIME': pick("customData['Survey Submitted Date']"),
+      // Was customData['Survey Submitted Date'], which GoHighLevel does not
+      // send on this action — it always resolved empty. Stamped on arrival
+      // instead; see docs/N8N-MAPPING.md.
+      'OPTED IN DATE / TIME': receivedNow,
     },
   },
   {

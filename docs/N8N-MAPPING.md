@@ -164,7 +164,38 @@ the shape already in the sheet. The zone is `TIMEZONE`, defaulting to
 
 ## Deliberate differences
 
-Two, both invisible in what lands in the sheet:
+### The opt-in timestamp is stamped on arrival
+
+n8n read `OPTED IN DATE / TIME` from `customData['Survey Submitted Date']`.
+GoHighLevel does not send that key on the PEE Optin webhook action, so the
+column came out empty on every lead. It is now stamped with the time the
+webhook arrived, rendered in `TIMEZONE` (`Australia/Sydney`) in the same
+`dd/mm/yyyy h:mm:ss am` shape the sheet already uses.
+
+Receipt time and survey-submission time are within seconds of each other, so
+this is a close stand-in. If the GoHighLevel action is later configured to send
+a real survey timestamp, `receivedNow` in
+[`events.ts`](../src/lead-tracker/events.ts) can go back to reading it.
+
+Only the append branch stamps it, so re-opting an existing lead does not
+overwrite their original opt-in date.
+
+### An update never blanks a cell the webhook had no value for
+
+If a payload omits a field the event maps, that column is skipped on update
+rather than written as an empty string. A sparse webhook can no longer wipe
+`Campaign`, `Creative` or an opt-in date that is already correct.
+
+The exception is a mapper writing a *fixed* value: those are marked `literal`
+and always written, which is what keeps `pee-created` deliberately clearing
+`Booked Call Strategy`. The distinction is between "the workflow means to blank
+this" and "the webhook didn't send it".
+
+Skipped columns come back as `preservedColumns` in the response and are logged,
+so the behaviour is visible rather than silent. Appends are unaffected — a new
+row has nothing to protect.
+
+### Two more, both invisible in what lands in the sheet:
 
 - **Targeted cell writes.** An update writes only the columns the event maps,
   as individual ranges, rather than rewriting the row. Same values, but a
