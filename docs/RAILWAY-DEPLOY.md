@@ -1,5 +1,11 @@
 # Deploying to Railway
 
+> **Already provisioned.** Project `n8n-workflows`, service
+> `catercloud-lead-tracker`, environment `production`, deployed from branch
+> `claude/elegant-faraday-a9i2u8` at
+> `https://catercloud-lead-tracker-production.up.railway.app`. The steps below
+> are the record of how, and what to repeat for a second environment.
+
 ## 1. Create the service
 
 Point a Railway service at this repository. `railway.json` selects the
@@ -25,8 +31,15 @@ DRY_RUN=true
 
 `LEAD_SHEET_NAME` ends in a space. Keep it — that is the tab's real name.
 
-`PORT` is injected by Railway; the service reads it. Generate the secrets with
-`openssl rand -hex 32`.
+Generate the secrets with `openssl rand -hex 32`.
+
+**Set `PORT=3000` explicitly.** Railway injects `PORT=8080` when the variable is
+unset, while a generated service domain is pinned to whichever `targetPort` it
+was created with. If the two disagree the service is healthy but the domain
+returns nothing — the deploy log says `listening ... "port":8080` and every
+request 502s. Pinning both to 3000 keeps them aligned. (The alternative is to
+leave `PORT` unset and point the domain at 8080 instead; either works, as long
+as they match.)
 
 Then add the three Google variables from [GOOGLE-OAUTH.md](GOOGLE-OAUTH.md).
 
