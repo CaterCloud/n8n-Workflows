@@ -47,6 +47,12 @@ const schema = z.object({
 
   /** Accept and log a webhook without writing to the sheet. */
   DRY_RUN: bool(false),
+
+  /**
+   * Keep the last few webhook payloads in memory for inspection via
+   * /admin/lead/recent. Off by default: while on it holds real lead data.
+   */
+  WEBHOOK_CAPTURE: bool(false),
 });
 
 export type Env = z.infer<typeof schema>;

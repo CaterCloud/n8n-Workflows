@@ -449,3 +449,50 @@ describe('against the live sheet header', () => {
     expect(allMapped).not.toContain('Triage Call Booked\nTHrough Funnel');
   });
 });
+
+describe('emptyColumns', () => {
+  it('names every mapped column the payload had no value for', async () => {
+    const { port } = makePort([]);
+    // Only the top-level fields are present — exactly what GoHighLevel sent
+    // when the webhook action had no custom data configured.
+    const result = await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      { full_name: 'Partial Payload', phone: '614125550987', email: 'partial@example.com' },
+      port,
+    );
+
+    expect(result.action).toBe('appended');
+    expect(result.emptyColumns).toEqual([
+      'Campaign',
+      'Audience',
+      'Creative',
+      'PIC',
+      'What’s your approx monthly revenue from private events?',
+      'Do you currently have a way of generating consistent private event enquiries?',
+      'OPTED IN DATE / TIME',
+    ]);
+  });
+
+  it('is empty when the payload carries everything', async () => {
+    const { port } = makePort([]);
+    const result = await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      {
+        full_name: 'Full Payload',
+        phone: '614125550987',
+        email: 'full@example.com',
+        PIC: 'Sam',
+        contact: {
+          attributionSource: { campaign: 'c', utmMedium: 'm' },
+          lastAttributionSource: { utmContent: 'x' },
+        },
+        customData: { 'Survey Submitted Date': '12/10/2026 9:15:00 am' },
+        'What’s your approx monthly revenue from private events? ': '$10k',
+        'Do you currently have a way of generating consistent private event enquiries? ': 'No',
+      },
+      port,
+    );
+
+    expect(result.emptyColumns).toEqual([]);
+  });
+});

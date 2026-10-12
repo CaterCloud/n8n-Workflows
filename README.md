@@ -61,8 +61,16 @@ and watching real payloads arrive before anything is committed to the sheet.
 | `POST` | `/webhooks/lead/:slug` | Receives a lead event by readable name. |
 | `POST` | `/webhook/:uuid` | The original n8n paths. |
 | `GET` | `/admin/lead/sheet` | Reads the live sheet header and flags any mapped column the sheet is missing. |
+| `GET` | `/admin/lead/recent` | The last few webhook payloads and their flattened shape, while `WEBHOOK_CAPTURE` is on. |
 
 Responses are JSON: `{"ok":true,"action":"updated","rowNumber":42,...}`.
+
+Each response also carries `emptyColumns` — mapped columns the payload had no
+value for. A long list there means the sender is not sending what the mapping
+expects, which is far easier to spot than a quietly blank cell. To see the
+payload itself, set `WEBHOOK_CAPTURE=true`, re-send, and read
+`/admin/lead/recent`; turn it back off afterwards, since it holds real lead
+data in memory.
 
 Status codes: `400` the payload has no email to match on, `401` bad or missing
 secret, `404` unknown event, `502` Google Sheets refused, `503` the service is

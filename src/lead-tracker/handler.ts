@@ -17,6 +17,12 @@ export interface LeadResult {
   rowNumber?: number;
   columnsWritten: string[];
   unknownColumns: string[];
+  /**
+   * Mapped columns whose source was absent from the payload, so an empty
+   * string was written. A long list here usually means the sending system is
+   * not sending what the mapping expects.
+   */
+  emptyColumns: string[];
   dryRun: boolean;
   /** Set when `action` is `skipped`, explaining why. */
   reason?: string;
@@ -29,6 +35,11 @@ function render(map: FieldMap, ctx: MapContext): Record<string, string> {
   }
   return out;
 }
+
+const emptyOf = (cells: Record<string, string>): string[] =>
+  Object.entries(cells)
+    .filter(([, v]) => v === '')
+    .map(([k]) => k);
 
 function sheetId(): string {
   const id = env().LEAD_SHEET_ID;
@@ -99,6 +110,7 @@ export async function handleLeadEvent(
         rowNumber: existingRow.rowNumber,
         columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
         unknownColumns: Object.keys(cells).filter((c) => !table.header.includes(c)),
+        emptyColumns: emptyOf(cells),
         dryRun,
       };
     }
@@ -110,7 +122,12 @@ export async function handleLeadEvent(
       existingRow.rowNumber,
       cells,
     );
-    log.info('row updated', { matchValue, rowNumber: existingRow.rowNumber, columns: updated.length });
+    log.info('row updated', {
+      matchValue,
+      rowNumber: existingRow.rowNumber,
+      columns: updated.length,
+      empty: emptyOf(cells).length,
+    });
     return {
       event: event.slug,
       action: 'updated',
@@ -118,6 +135,7 @@ export async function handleLeadEvent(
       rowNumber: existingRow.rowNumber,
       columnsWritten: updated,
       unknownColumns,
+      emptyColumns: emptyOf(cells),
       dryRun,
     };
   }
@@ -135,6 +153,7 @@ export async function handleLeadEvent(
       matchValue,
       columnsWritten: [],
       unknownColumns: [],
+      emptyColumns: [],
       dryRun,
       reason:
         event.missingRowNote ??
@@ -151,18 +170,21 @@ export async function handleLeadEvent(
       matchValue,
       columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
       unknownColumns: Object.keys(cells).filter((c) => !table.header.includes(c)),
+      emptyColumns: emptyOf(cells),
       dryRun,
     };
   }
 
   const { unknownColumns } = await port.append(spreadsheetId, sheetTitle, table.header, cells);
-  log.info('row appended', { matchValue, columns: Object.keys(cells).length });
+  const empty = emptyOf(cells);
+  log.info('row appended', { matchValue, columns: Object.keys(cells).length, empty: empty.length });
   return {
     event: event.slug,
     action: 'appended',
     matchValue,
     columnsWritten: Object.keys(cells).filter((c) => table.header.includes(c)),
     unknownColumns,
+    emptyColumns: empty,
     dryRun,
   };
 }

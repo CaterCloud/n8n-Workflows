@@ -7,6 +7,7 @@ import { withLock } from '../lib/mutex.js';
 import { LEAD_EVENTS, leadEventByN8nPath, leadEventBySlug, type LeadEvent } from '../lead-tracker/events.js';
 import { handleLeadEvent } from '../lead-tracker/handler.js';
 import { configuredAuthMode, serviceAccountEmail } from '../integrations/google-auth.js';
+import { capture, captureEnabled, clearCaptures, describeShape, recentCaptures } from '../lead-tracker/capture.js';
 
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -118,10 +119,23 @@ export function buildServer(): FastifyInstance {
       }
     }
 
+    capture({ at: new Date().toISOString(), event: event.slug, path: req.url, body: req.body });
+
     // Serialise per spreadsheet so a read/append pair cannot interleave.
     const result = await withLock(`lead-sheet:${env().LEAD_SHEET_ID ?? 'unset'}`, () =>
       handleLeadEvent(event, req.body),
     );
+
+    if (result.emptyColumns.length) {
+      logger.warn('mapped columns resolved empty', {
+        event: event.slug,
+        emptyColumns: result.emptyColumns,
+        hint: captureEnabled()
+          ? 'inspect the payload at GET /admin/lead/recent'
+          : 'set WEBHOOK_CAPTURE=true to inspect the next payload',
+      });
+    }
+
     return reply.code(200).send({ ok: true, ...result });
   }
 
@@ -186,6 +200,35 @@ export function buildServer(): FastifyInstance {
       /** Columns the events write that the sheet does not have — a live check. */
       missingFromSheet: [...mapped].filter((c) => !table.header.includes(c)),
     };
+  });
+
+  /**
+   * The last few webhook payloads, with a flattened view of their shape. Only
+   * populated while WEBHOOK_CAPTURE is on.
+   */
+  app.get('/admin/lead/recent', async () => {
+    const captures = recentCaptures();
+    return {
+      ok: true,
+      captureEnabled: captureEnabled(),
+      count: captures.length,
+      hint: captureEnabled()
+        ? 'Turn WEBHOOK_CAPTURE off once you are done — this holds real lead data.'
+        : 'Set WEBHOOK_CAPTURE=true to start capturing, then re-send a webhook.',
+      captures: captures.map((c) => ({
+        at: c.at,
+        event: c.event,
+        path: c.path,
+        /** Every leaf path in the payload — the mapping source of truth. */
+        shape: describeShape(c.body),
+        body: c.body,
+      })),
+    };
+  });
+
+  app.delete('/admin/lead/recent', async () => {
+    clearCaptures();
+    return { ok: true, cleared: true };
   });
 
   return app;
