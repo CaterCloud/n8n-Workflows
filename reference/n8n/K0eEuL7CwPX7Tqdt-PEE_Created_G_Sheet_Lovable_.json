@@ -1,0 +1,1059 @@
+{
+  "name": "PEE Created | G Sheet (Lovable)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "1c3ea975-d68b-43f6-839a-859d39e29b8f",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "39d771f6-c532-421d-81a7-1d44d8fca147",
+      "name": "Webhook",
+      "webhookId": "1c3ea975-d68b-43f6-839a-859d39e29b8f"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw",
+          "mode": "list",
+          "cachedResultName": "PEE Optin - Utm",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2130596273,
+          "mode": "list",
+          "cachedResultName": "PEE ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw/edit#gid=2130596273"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "EMAIL",
+              "lookupValue": "={{ $json.body.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        0
+      ],
+      "id": "07fe0776-c7a1-4ff9-b70d-b7a799e8657d",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "9cjuHCOd3Ux4Kqsb",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d0fb9df1-2d07-4a67-9887-bef21a644dce",
+              "leftValue": "={{ $json.row_number }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        0
+      ],
+      "id": "2d915070-84dc-4f63-ac00-250d0fdc2868",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw",
+          "mode": "list",
+          "cachedResultName": "PEE Optin - Utm",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2130596273,
+          "mode": "list",
+          "cachedResultName": "PEE ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw/edit#gid=2130596273"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "Name": "={{ $('Webhook').item.json.body.name }}",
+            "PHONE NUMBER": "={{ $('Webhook').item.json.body.phone }}",
+            "EMAIL": "={{ $('Webhook').item.json.body.email }}",
+            "OPTED IN DATE / TIME": "={{ new Date($('Webhook').item.json.body.submitted_at).toLocaleString('en-AU', {\n  day: 'numeric',\n  month: 'numeric',\n  year: 'numeric',\n  hour: 'numeric',\n  minute: '2-digit',\n  second: 'numeric',\n  hour12: true\n}).replace(',', '') }}",
+            "Campaign": "={{ $('Webhook').item.json.body.campaign }}",
+            "Creative": "={{ $('Webhook').item.json.body.utmContent }}",
+            "Audience": "={{ $('Webhook').item.json.body.utmMedium }}",
+            "Application Completed": "Yes",
+            "What’s your approx monthly revenue from private events?": "={{ $('Webhook').item.json.body.answers['What\\'s your approximate monthly catering revenue right now? *'] }}",
+            "What's your biggest challenge right now?": "={{ $('Webhook').item.json.body.answers['What\\'s your biggest challenge right now? *'] }}",
+            "When do you want this problem solved?": "={{ $('Webhook').item.json.body.answers['When do you want this problem solved? *'] }}",
+            "What's your role in the business?": "={{ $('Webhook').item.json.body.answers['What\\'s your role in the business? *'] }}",
+            "What best describes your catering business?": "={{ $('Webhook').item.json.body.answers['What best describes your catering business? *'] }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lead Grade",
+              "displayName": "Lead Grade",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PHONE NUMBER",
+              "displayName": "PHONE NUMBER",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "EMAIL",
+              "displayName": "EMAIL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "OPTED IN DATE / TIME",
+              "displayName": "OPTED IN DATE / TIME",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Campaign",
+              "displayName": "Campaign",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Audience",
+              "displayName": "Audience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Creative",
+              "displayName": "Creative",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PIC",
+              "displayName": "PIC",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Triage Call Booked\nTHrough Funnel",
+              "displayName": "Triage Call Booked\nTHrough Funnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Strategy Call Booked\nThrough Funnel",
+              "displayName": "Strategy Call Booked\nThrough Funnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Application Completed",
+              "displayName": "Application Completed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "What’s your approx monthly revenue from private events?",
+              "displayName": "What’s your approx monthly revenue from private events?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Do you currently have a way of generating consistent private event enquiries?",
+              "displayName": "Do you currently have a way of generating consistent private event enquiries?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "What best describes your catering business?",
+              "displayName": "What best describes your catering business?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "What's your biggest challenge right now?",
+              "displayName": "What's your biggest challenge right now?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "When do you want this problem solved?",
+              "displayName": "When do you want this problem solved?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "What's your role in the business?",
+              "displayName": "What's your role in the business?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "FOLLOW UP 2 (2 DAYS)",
+              "displayName": "FOLLOW UP 2 (2 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FOLLOW UP 3 (3 DAYS)",
+              "displayName": "FOLLOW UP 3 (3 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FOLLOW UP 4 (4 DAYS)",
+              "displayName": "FOLLOW UP 4 (4 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FOLLOW UP 5 (7 DAYS)",
+              "displayName": "FOLLOW UP 5 (7 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "9",
+              "displayName": "9",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "10",
+              "displayName": "10",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "11",
+              "displayName": "11",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "12",
+              "displayName": "12",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "13",
+              "displayName": "13",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "14",
+              "displayName": "14",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "15",
+              "displayName": "15",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "16",
+              "displayName": "16",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "17",
+              "displayName": "17",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "STATUS",
+              "displayName": "STATUS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "COMMENTS",
+              "displayName": "COMMENTS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "REASON LOST? (IF)",
+              "displayName": "REASON LOST? (IF)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OPTED IN SERVICE",
+              "displayName": "OPTED IN SERVICE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "REPORTED REVENUE (RM)",
+              "displayName": "REPORTED REVENUE (RM)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Booked Call",
+              "displayName": "Booked Call",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Showed Up / No Show",
+              "displayName": "Showed Up / No Show",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Onboarded To PEE",
+              "displayName": "Onboarded To PEE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Booked Call Strategy",
+              "displayName": "Booked Call Strategy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        -96
+      ],
+      "id": "122c7c33-03ce-46e5-9c3e-2218e47cc204",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "9cjuHCOd3Ux4Kqsb",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw",
+          "mode": "list",
+          "cachedResultName": "PEE Optin - Utm",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XETq_e721_67XJgyWPBC365HhAxCojrSwdVCkDVzTjw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=2130596273",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Webhook').item.json.body.name }}",
+            "PHONE NUMBER": "={{ $('Webhook').item.json.body.phone }}",
+            "EMAIL": "={{ $('Webhook').item.json.body.email }}",
+            "OPTED IN DATE / TIME": "={{ new Date($('Webhook').item.json.body.submitted_at).toLocaleString('en-AU', {\n  day: 'numeric',\n  month: 'numeric',\n  year: 'numeric',\n  hour: 'numeric',\n  minute: '2-digit',\n  second: 'numeric',\n  hour12: true\n}).replace(',', '') }}",
+            "Campaign": "={{ $('Webhook').item.json.body.campaign }}",
+            "Audience": "={{ $('Webhook').item.json.body.utmMedium }}",
+            "Creative": "={{ $('Webhook').item.json.body.utmContent }}",
+            "Application Completed": "Yes",
+            "What’s your approx monthly revenue from private events?": "={{ $('Webhook').item.json.body.answers['What\\'s your approximate monthly catering revenue right now? *'] }}",
+            "What best describes your catering business?": "={{ $('Webhook').item.json.body.answers['What best describes your catering business? *'] }}",
+            "What's your biggest challenge right now?": "={{ $('Webhook').item.json.body.answers['What\\'s your biggest challenge right now? *'] }}",
+            "When do you want this problem solved?": "={{ $('Webhook').item.json.body.answers['When do you want this problem solved? *'] }}",
+            "What's your role in the business?": "={{ $('Webhook').item.json.body.answers['What\\'s your role in the business? *'] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lead Grade",
+              "displayName": "Lead Grade",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PHONE NUMBER",
+              "displayName": "PHONE NUMBER",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "EMAIL",
+              "displayName": "EMAIL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OPTED IN DATE / TIME",
+              "displayName": "OPTED IN DATE / TIME",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Campaign",
+              "displayName": "Campaign",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Audience",
+              "displayName": "Audience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Creative",
+              "displayName": "Creative",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PIC",
+              "displayName": "PIC",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Triage Call Booked\nTHrough Funnel",
+              "displayName": "Triage Call Booked\nTHrough Funnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Strategy Call Booked\nThrough Funnel",
+              "displayName": "Strategy Call Booked\nThrough Funnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Application Completed",
+              "displayName": "Application Completed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "What’s your approx monthly revenue from private events?",
+              "displayName": "What’s your approx monthly revenue from private events?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Do you currently have a way of generating consistent private event enquiries?",
+              "displayName": "Do you currently have a way of generating consistent private event enquiries?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "What best describes your catering business?",
+              "displayName": "What best describes your catering business?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "What's your biggest challenge right now?",
+              "displayName": "What's your biggest challenge right now?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "When do you want this problem solved?",
+              "displayName": "When do you want this problem solved?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "What's your role in the business?",
+              "displayName": "What's your role in the business?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "FOLLOW UP 2 (2 DAYS)",
+              "displayName": "FOLLOW UP 2 (2 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FOLLOW UP 3 (3 DAYS)",
+              "displayName": "FOLLOW UP 3 (3 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FOLLOW UP 4 (4 DAYS)",
+              "displayName": "FOLLOW UP 4 (4 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FOLLOW UP 5 (7 DAYS)",
+              "displayName": "FOLLOW UP 5 (7 DAYS)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "9",
+              "displayName": "9",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "10",
+              "displayName": "10",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "11",
+              "displayName": "11",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "12",
+              "displayName": "12",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "13",
+              "displayName": "13",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "14",
+              "displayName": "14",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "15",
+              "displayName": "15",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "16",
+              "displayName": "16",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "17",
+              "displayName": "17",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "STATUS",
+              "displayName": "STATUS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "COMMENTS",
+              "displayName": "COMMENTS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "REASON LOST? (IF)",
+              "displayName": "REASON LOST? (IF)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OPTED IN SERVICE",
+              "displayName": "OPTED IN SERVICE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "REPORTED REVENUE (RM)",
+              "displayName": "REPORTED REVENUE (RM)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Booked Call",
+              "displayName": "Booked Call",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Showed Up / No Show",
+              "displayName": "Showed Up / No Show",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Onboarded To PEE",
+              "displayName": "Onboarded To PEE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Booked Call Strategy",
+              "displayName": "Booked Call Strategy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        96
+      ],
+      "id": "e62f3434-1e18-43e9-a28d-bb0aa86f85cf",
+      "name": "Append row in sheet",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "9cjuHCOd3Ux4Kqsb",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "catercloud.app.n8n.cloud",
+            "content-length": "671",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=2",
+            "cf-connecting-ip": "2a06:98c0:3600::103",
+            "cf-ew-via": "14",
+            "cf-ipcountry": "PK",
+            "cf-ray": "a345795bf987c4c3-KHI",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "2a06:98c0:3600::103, 172.68.249.148",
+            "x-forwarded-host": "catercloud.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-67-6d5f54696-ldfhm",
+            "x-is-trusted": "yes",
+            "x-real-ip": "2a06:98c0:3600::103"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "name": "Salman Test",
+            "email": "salmanmasood2404@gmail.com",
+            "phone": "+614125550987",
+            "answers": {
+              "What best describes your catering business? *": "Food truck (markets, festivals, street events)",
+              "What's your biggest challenge right now? *": "Bookings are inconsistent — good weeks and dead weeks",
+              "When do you want this problem solved? *": "Within the next 30 days",
+              "What's your role in the business? *": "Owner / operator (I run everything)",
+              "What's your approximate monthly catering revenue right now? *": "$5,000 – $15,000/month"
+            },
+            "visitor_id": "5wlfolrysg9mtiprnmy",
+            "landingPage": "https://preview--replica-companion.lovable.app/",
+            "submitted_at": "2026-09-01T15:58:00.237Z"
+          },
+          "webhookUrl": "https://catercloud.app.n8n.cloud/webhook/1c3ea975-d68b-43f6-839a-859d39e29b8f",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

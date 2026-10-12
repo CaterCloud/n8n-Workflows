@@ -1,0 +1,429 @@
+{
+  "name": "GHL + N8N Update",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 11
+            }
+          ]
+        }
+      },
+      "id": "bb0eefde-021a-4129-a41a-876c88e9bf26",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -2060,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://rest.gohighlevel.com/v1/locations/NeGmNMm3xs5QfUpL5qRA",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer REDACTED_JWT"
+            }
+          ]
+        }
+      },
+      "id": "841c3875-ef6c-40d5-8528-27b679d2eb5f",
+      "name": "Get GHL Subaccounts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        -1800,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1520,
+        240
+      ],
+      "id": "37236068-f3b4-4276-85c8-50c6de9a3822",
+      "name": "Google Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map folder IDs to folder names manually (replace with your folder IDs)\nconst folderMapping = {\n  '1hicgOLjO...DrWT': 'Food',\n  '1jXusDvhg...Ve7pFB5': 'People',\n  '1PQtcJ-Fs...P4cM': 'Shopfront'\n};\n\nconst requiredFolders = ['Food', 'People', 'Shopfront'];\nconst minFiles = 5;\n\nconst filesGrouped = {};\n\n// Group files based on parent folder\n$input.all().forEach(item => {\n  const parentId = item.json.parents ? item.json.parents[0] : null;\n  const folderName = folderMapping[parentId] || 'Unknown';\n\n  if (!filesGrouped[folderName]) {\n    filesGrouped[folderName] = [];\n  }\n  filesGrouped[folderName].push(item.json);\n});\n\n// Check file count per folder\nconst foldersWithLowFiles = requiredFolders.filter(folder => {\n  return !filesGrouped[folder] || filesGrouped[folder].length < minFiles;\n});\n\nreturn [\n  {\n    json: {\n      validation_passed: foldersWithLowFiles.length === 0,\n      folders_with_low_files: foldersWithLowFiles,\n      files_grouped: filesGrouped\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        60
+      ],
+      "id": "aca9b702-403c-4aee-8266-1ff743b08999",
+      "name": "Validate File Count"
+    },
+    {
+      "parameters": {
+        "jsCode": "const filesGrouped = $json.files_grouped; \nconst rotationHistory = $json.rotation_history || {}; // (In future, store externally - e.g., DB or GHL custom values)\n\nconst selectedContent = [];\nconst maxPosts = 3; // Example: 3 posts (1 per folder); adjust as needed\n\nObject.keys(filesGrouped).forEach(folder => {\n  const unusedFiles = filesGrouped[folder].filter(file => {\n    const lastUsed = rotationHistory[file.id];\n    if (!lastUsed) return true;\n\n    const thirtyDays = 30 * 24 * 60 * 60 * 1000;\n    return Date.now() - lastUsed > thirtyDays;\n  });\n\n  if (unusedFiles.length > 0) {\n    // ✅ Randomly pick 1 unused file per folder\n    const randomFile = unusedFiles[Math.floor(Math.random() * unusedFiles.length)];\n\n    selectedContent.push({\n      folder,\n      file: {\n        id: randomFile.id,\n        name: randomFile.name,\n        url: randomFile.webContentLink || `https://drive.google.com/uc?id=${randomFile.id}`\n      }\n    });\n\n    // ✅ Update rotation history (later save externally)\n    rotationHistory[randomFile.id] = Date.now();\n  }\n});\n\n// ✅ Limit total posts (e.g., only 1 if needed)\nreturn [\n  {\n    json: {\n      selected_content: selectedContent.slice(0, maxPosts),\n      rotation_history: rotationHistory // Keep history for next run\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        40
+      ],
+      "id": "c1914bab-a485-40c5-8a23-d26b2ee61f98",
+      "name": "Select & Rotate Content"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Required folders for validation\nconst requiredFolders = ['Food', 'People', 'Shopfront'];\n\n// Extract all folder names from the Google Drive output\nconst allFolders = $input.all().map(item => item.json.name);\n\n// Identify missing folders\nconst missingFolders = requiredFolders.filter(folder => !allFolders.includes(folder));\n\nreturn [\n  {\n    json: {\n      validation_passed: missingFolders.length === 0,\n      missing_folders: missingFolders,\n      all_folders: allFolders\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        240
+      ],
+      "id": "638d2747-b6ac-499d-8723-8a0451d5aa45",
+      "name": "Validate Folders"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5b84547f-f550-4c3b-9787-3ef1de96df19",
+              "leftValue": "={{ $json.validation_passed }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1020,
+        240
+      ],
+      "id": "150a841c-6ef6-4204-9caa-bb99b983b84c",
+      "name": "Check Folder Validation"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert social media content writer.\n\nYou will generate an engaging caption for the following post:\n- Folder/Theme: {{$json[\"selected_content\"][0][\"folder\"]}}\n- File Name: {{$json[\"selected_content\"][0][\"file\"][\"name\"]}}\n\nBusiness Type: {{$json[\"business_type\"] || \"Catering Service\"}}\n\nRules:\n1. Match the brand's tone (friendly, conversational).\n2. 50% of posts should include a private events promotion with this CTA:\n   “Head to the link in our bio to view our menu and generate an instant quote!”\n3. Follow these content pillars:\n   - Reviews\n   - Service Awareness\n   - Seasonal Awareness\n   - Event Reports\n   - Menu Spotlights\n   - Client Use Cases\n   - Behind the Scenes\n   - Calls to Action\n   - Social Proof Extensions\n   - Event Promotions / Limited-Time Offers\n   - Brand Story\n   - Testimonials as Mini-Stories\n   - Community & Reposts\n4. Keep the caption under 80 words.\n\nOutput JSON:\n{\n  \"caption\": \"string\",\n  \"platform_variations\": {\n    \"instagram\": \"string\",\n    \"facebook\": \"string\",\n    \"google_my_business\": \"string\"\n  }\n}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        60,
+        40
+      ],
+      "id": "82f98745-d2ef-4b9b-8dcf-be14ee6636f7",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "vwCvepUOnSCuTd0t",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/social-media-posting/NeGmNMm3xs5QfUpL5qRA/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "highLevelOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-a012355f-REDACTED"
+            },
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"accountIds\": [\n    \"66a092ff9da3812b8506def4_NeGmNMm3xs5QfUpL5qRA_10164004163556484867\",\n    \"66a094069da38160a706df6b_NeGmNMm3xs5QfUpL5qRA_359381653933375_page\",\n    \"66a0942d72c2be83def034e4_NeGmNMm3xs5QfUpL5qRA_17841453456772009\"\n  ],\n  \"summary\": \"{{$json.summary}}\",\n  \"media\": [\n    {\n      \"url\": \"{{$json.media[0].url}}\",\n      \"caption\": \"{{$json.media[0].caption}}\",\n      \"type\": \"image/jpeg\"\n    }\n  ],\n  \"status\": \"draft\",\n  \"type\": \"post\",\n  \"userId\": \"{{$json.userId}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        40
+      ],
+      "id": "52548a41-b944-4d63-965f-851d40844d0f",
+      "name": "Post GHL",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "0qhT1KC7Vy0fxmpX",
+          "name": "Bearer Auth account"
+        },
+        "highLevelOAuth2Api": {
+          "id": "RNKqwAAWpQW7jaQ6",
+          "name": "HighLevel account "
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "19c2fefe-cc6f-4e67-a05f-a8b549aef226",
+              "leftValue": "={{ $json.validation_passed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -480,
+        60
+      ],
+      "id": "ebd1c5fd-2cc9-4937-98c8-2cb1136b7e0c",
+      "name": "Validate File Count1"
+    },
+    {
+      "parameters": {
+        "url": "https://backend.leadconnectorhq.com/social-media-posting/NeGmNMm3xs5QfUpL5qRA/accounts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-a012355f-REDACTED"
+            },
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -140,
+        500
+      ],
+      "id": "ff246f80-c28b-45cc-a1e7-40af5ca53db3",
+      "name": "Get Accounts ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  // Clean and parse OpenAI JSON\n  const cleanContent = item.json.message.content\n    .replace(/```json\\n?/, '')\n    .replace(/```/, '')\n    .trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanContent);\n  } catch (e) {\n    parsed = { caption: \"Default caption\", platform_variations: {} };\n  }\n\n  return {\n    json: {\n      accountIds: [\n        \"66a092ff9da3812b8506def4_NeGmNMm3xs5QfUpL5qRA_10164004163556484867\",\n        \"66a094069da38160a706df6b_NeGmNMm3xs5QfUpL5qRA_359381653933375_page\",\n        \"66a0942d72c2be83def034e4_NeGmNMm3xs5QfUpL5qRA_17841453456772009\"\n      ],\n      summary: parsed.caption,  // ✅ Now correctly resolved\n      media: [\n        {\n          url: item.json.imageUrl || \"https://via.placeholder.com/800\",\n          caption: parsed.caption,\n          type: \"image/jpeg\"\n        }\n      ],\n      status: \"draft\",\n      type: \"post\",\n      userId: \"USERID\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        40
+      ],
+      "id": "fa5af673-0718-4d87-89fe-17b53e2c182a",
+      "name": "Create Post"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get GHL Subaccounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GHL Subaccounts": {
+      "main": [
+        [
+          {
+            "node": "Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Validate Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate File Count": {
+      "main": [
+        [
+          {
+            "node": "Validate File Count1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select & Rotate Content": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Folders": {
+      "main": [
+        [
+          {
+            "node": "Check Folder Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Folder Validation": {
+      "main": [
+        [
+          {
+            "node": "Validate File Count",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Create Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate File Count1": {
+      "main": [
+        [
+          {
+            "node": "Select & Rotate Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Create Post": {
+      "main": [
+        [
+          {
+            "node": "Post GHL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

@@ -1,0 +1,556 @@
+{
+  "name": "Junction Cafe GHL + N8N Socai Media Posting",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "custom",
+              "cronExpression": "0 10 26 * *"
+            }
+          ]
+        }
+      },
+      "id": "1eaefcb1-e5af-486f-8d1b-4e3b253dcf73",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -2144,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://rest.gohighlevel.com/v1/locations/Ug16dt3qfWWQu0tliuGr",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer REDACTED_JWT"
+            }
+          ]
+        }
+      },
+      "id": "4572948c-ad47-4c00-9e49-a6527dacef62",
+      "name": "Get GHL Subaccounts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        -1808,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are the social copywriter for {{ $json.brand_name || 'the business' }}. Write in Australian English. Sound like a real human from the brand team: relaxed, clear, no hype. Use blunt humour sparingly (only when asked), avoid clichés, and NEVER invent details (no fake times, prices, locations, or availability).\n\nINPUTS (some may be empty — if empty, don’t guess)\n- Brand Context (JSON/text): {{ $json.brandContext }}\n- Brand Brief (optional): {{ $json.brand_brief || '' }}\n- Website Summary (optional): {{ $json.website_text || '' }}\n- Menu Summary (optional): {{ $json.menu_text || '' }}\n- Service List (optional): {{ $json.service_list || '' }}\n- Review Snippets (optional): {{ $json.review_snippets || '' }}\n- Previous Posts (JSON array of recent captions): {{ $json.previous_posts || '[]' }}\n- Media URL: {{ $json.selected_image.url }}\n- Folder Category/Theme: {{ $json.folder_category || '' }}   // shop, staff, customers, food, events\n- City/Area: {{ $json.city || '' }}\n- Platforms Connected (csv): {{ $json.platforms || 'instagram,facebook,google_my_business' }} // may include 'tiktok'\n- Link (optional): {{ $json.link || '' }} // use only on FB/GMB\n- Forced Pillar (optional): {{ $json.pillar || '' }} // otherwise choose best match\n- Locale: {{ $json.locale || 'en-AU' }}\n- Promote Private Events (bool ~50% of posts): {{ $json.promote_private_event === true ? 'true' : 'false' }}\n- Tone Mode: {{ $json.tone_mode || 'auto' }} // 'auto' | 'straight' | 'blunt'\n- Humour Probability (0–1 when tone_mode='auto'): {{ $json.humour_probability || '0.35' }}\n- Allowed Hashtags (JSON): {{ $json.allowed_hashtags || '[]' }}\n- Banned Hashtags (JSON): {{ $json.banned_hashtags || '[]' }}\n\nGOALS\n1) Ground the caption in what’s clearly visible in the media (one friendly line). If uncertain, use a safe generality (e.g., “fresh, avo-loaded goodness”).\n2) Choose exactly ONE content pillar (see PILLARS). If \"Forced Pillar\" is set, use it; otherwise infer from media + folder category + brand context.\n3) If Promote Private Events = true, naturally allude to private catering (weddings, corporate, parties) and include a soft CTA variant:\n   - Primary variant: “Head to the link in our bio to view our menu and generate an instant quote!”\n   - Instagram/TikTok: refer to “link in bio”.\n   - Facebook/GMB: include {{ $json.link }} if provided; if not, use “Message us to book.”\n   - Vary phrasing across posts to avoid repetition.\n4) Match the brand’s voice and cadence from Brand Context + Previous Posts. Do NOT echo the same openers used recently.\n\nPILLARS (pick one)\n- Reviews / Testimonials\n- Service Awareness\n- Seasonal Awareness\n- Event Reports\n- Menu Spotlights\n- Client Use Cases\n- Behind the Scenes / Team Life\n- Calls to Action\n- Social Proof Extensions\n- Event Promotions / Limited Offers\n- Brand Story / Founder Insights\n- Testimonials as Mini-Stories\n- Community & Reposts\n\nTONE MIX\n- If tone_mode='straight' → keep it direct and food/service-led.\n- If tone_mode='blunt' → allow dry, understated lines (no sarcasm about customers/staff).\n- If tone_mode='auto' → use humour with probability {{ $json.humour_probability || '0.35' }}; otherwise keep straight.\n\nPLATFORM RULES\n- Instagram: punchy opener; short lines; 2–5 relevant hashtags (use allowed_hashtags; exclude banned); no links; ≤ 120 words. Max 1 emoji only if natural.\n- Facebook: one short conversational paragraph; include {{ $json.link }} if provided; 0–3 hashtags; gentle CTA if appropriate.\n- Google My Business: 1–2 sentences; no emojis/hashtags; mention “{{ $json.brand_name || 'The business' }}” and {{ $json.city || 'the city' }} once; include {{ $json.link }} if provided; factual tone.\n- TikTok (only if connected): short hook + body; 1–3 natural hashtags; no links; casual.\n\nGUARDRAILS\n- Respect locale spelling ({{ $json.locale }}).\n- No overpromising availability. No cliché words (“best ever”, “mouthwatering”).\n- Avoid repeating recent phrasing from Previous Posts (vary openers and CTAs).\n- If forced pillar doesn’t fit the media, adapt copy but keep the pillar label intent.\n- Keep JSON valid: return JSON only; no markdown, commentary, or trailing commas. Use \\n for line breaks inside strings.\n\nOUTPUT (return JSON only):\n{\n  \"caption\": \"Base caption suitable for all platforms (<= 120 words, natural line breaks with \\\\n).\",\n  \"platform_variations\": {\n    \"instagram\": \"IG-optimised caption with 2–5 relevant hashtags; 'link in bio' if CTA used.\",\n    \"facebook\": \"FB-optimised caption; include {{ $json.link }} if provided; 0–3 hashtags.\",\n    \"google_my_business\": \"GMB-optimised caption; 1–2 sentences; no hashtags/emojis; mention brand and city once; include link if provided.\",\n    \"tiktok\": \"If TikTok not connected, return an empty string; else a short hook + body with 1–3 hashtags; no links.\"\n  }\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -96,
+        -176
+      ],
+      "id": "aeff49af-e551-4a28-83a8-d2c8911308fc",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "vwCvepUOnSCuTd0t",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "(   '1XQlgm1WdRtpLE6C_RwSMLElhwFLiVKxY' in parents or   '1Muqi80TIl_wA-TzQyCJ048UyHr6aOu26' in parents or   '1f9JHOf2G_MCvCnc7MwA6s8u9Su1u6TDS' in parents ) and mimeType contains 'image/' and trashed = false",
+        "returnAll": true,
+        "filter": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1408,
+        -528
+      ],
+      "id": "9d265c2a-3993-49f6-b382-934f555545e8",
+      "name": "Get Images",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all input items (from Google Drive list)\nconst inputs = $input.all();\n\n// Filter valid image files (must have id + name)\nconst imageItems = inputs.filter(i => i.json.id && i.json.name);\n\n// If fewer than 30 images, stop\nif (imageItems.length < 30) {\n  throw new Error(`Need at least 30 images, found ${imageItems.length}`);\n}\n\n// Shuffle + pick 30\nfunction pickRandom(arr, n) {\n  const copy = [...arr];\n  for (let i = copy.length - 1; i > 0; i--) {\n    const j = Math.floor(Math.random() * (i + 1));\n    [copy[i], copy[j]] = [copy[j], copy[i]];\n  }\n  return copy.slice(0, n);\n}\n\nconst selected = pickRandom(imageItems, 30);\n\n// Output selected images in expected structure for next node\nreturn selected.map(item => {\n  const imageUrl = `https://drive.google.com/uc?id=${item.json.id}`;\n  return {\n    json: {\n      selected_image: {\n        id: item.json.id,\n        name: item.json.name,\n        url: imageUrl\n      }\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        -528
+      ],
+      "id": "d7ba7af5-0488-479e-9841-23b4933e10ea",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  // Clean and parse the OpenAI JSON string\n  const cleanContent = (item.json.message?.content || \"\")\n    .replace(/```json\\n?/gi, \"\")\n    .replace(/```/g, \"\")\n    .trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanContent);\n  } catch (e) {\n    parsed = {\n      caption: \"Default caption\",\n      platform_variations: {\n        instagram: \"Default Instagram post\",\n        facebook: \"Default Facebook post\",\n        google_my_business: \"Default GMB post\"\n      }\n    };\n  }\n\n  return {\n    json: {\n      caption: parsed.caption,\n      instagram_caption: parsed.platform_variations.instagram,\n      facebook_caption: parsed.platform_variations.facebook,\n      gmb_caption: parsed.platform_variations.google_my_business\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -176
+      ],
+      "id": "81b57ad1-e39d-4906-9390-80a82e45c378",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        704,
+        -336
+      ],
+      "id": "1c2bd5c1-9de6-4983-87c9-e44442741e59",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputs = $input.all();\n\n// ====== CONFIG ======\nconst ACCOUNT_IDS = [\n  \"6842412f0b2cd7868835bac8_Ug16dt3qfWWQu0tliuGr_4918053003130169250\",\n  \"68424061ee13aa135f4f1c0e_Ug16dt3qfWWQu0tliuGr_108324241854723_page\",\n  \"68424061ee13aa135f4f1c0e_Ug16dt3qfWWQu0tliuGr_209024725634554_page\",\n  \"68424061ee13aa135f4f1c0e_Ug16dt3qfWWQu0tliuGr_100989293061236_page\",\n  \"684240aaeaab949f5f3a9b3b_Ug16dt3qfWWQu0tliuGr_17841460723003098\"\n];\n\nconst USER_ID = \"lWZjS6ppoRL7w9v2r1VM\";\nconst SCHEDULE_HOUR = 10;  \nconst SCHEDULE_MIN  = 0;\n// =====================\n\n// --- Helpers ---\nfunction safeString(v, fallback = \"\") {\n  return (typeof v === \"string\" ? v : fallback);\n}\n\nfunction stripEmojis(str) {\n  return safeString(str).replace(/\\p{Extended_Pictographic}|\\p{Emoji_Presentation}/gu, \"\");\n}\n\nfunction baseNameFromUrl(u) {\n  try {\n    const p = new URL(u).pathname;\n    const leaf = p.split(\"/\").pop() || \"post\";\n    return leaf;\n  } catch {\n    return \"post\";\n  }\n}\n\nfunction extFromNameOrUrl(nameOrUrl) {\n  const s = safeString(nameOrUrl).toLowerCase();\n  const m = s.match(/\\.([a-z0-9]+)(?:$|\\?)/);\n  return m ? m[1] : \"\";\n}\n\nfunction mimeFromNameOrUrl(nameOrUrl) {\n  const ext = extFromNameOrUrl(nameOrUrl);\n  if (ext === \"png\") return \"image/png\";\n  if (ext === \"gif\") return \"image/gif\";\n  if (ext === \"webp\") return \"image/webp\";\n  if (ext === \"mp4\") return \"video/mp4\";\n  return \"image/jpeg\";\n}\n\nfunction nextNDatesUTC(count, hour, minute) {\n  const out = [];\n  let d = new Date();\n  for (let i = 0; i < count; i++) {\n    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, hour, minute, 0, 0);\n    out.push(new Date(d));\n  }\n  return out;\n}\n\nconst scheduleDates = nextNDatesUTC(inputs.length, SCHEDULE_HOUR, SCHEDULE_MIN);\n\n// --- Build one scheduled post per input item ---\nconst results = inputs.map((item, idx) => {\n  const j = item.json || {};\n\n  // Prefer Cloudinary-enhanced URL chain\n  const url =\n    safeString(j.used_url) ||\n    safeString(j.enhanced_url) ||\n    safeString(j.secure_url) ||\n    safeString(j?.selected_image?.url) ||\n    safeString(j.url);\n\n  if (!url) {\n    throw new Error(`Missing image URL on item #${idx + 1}. Expected used_url/enhanced_url/secure_url/selected_image.url/url`);\n  }\n\n  // File name\n  const name =\n    safeString(j?.selected_image?.name) ||\n    baseNameFromUrl(url);\n\n  // Caption (caption → fallback derived name)\n  const rawCaption =\n    safeString(j.caption) ||\n    `Fresh from The Avo Shack: ${safeString(name).replace(/\\.[^/.]+$/, \"\")}`;\n\n  const caption = stripEmojis(rawCaption).trim();\n\n  // Schedule date\n  const scheduleDate = scheduleDates[idx]\n    ? scheduleDates[idx].toISOString()\n    : new Date().toISOString();\n\n  return {\n    json: {\n      accountIds: ACCOUNT_IDS,    // ← USING YOUR SECOND CODE'S ACCOUNTS\n      summary: caption,\n      media: [\n        {\n          url,\n          type: mimeFromNameOrUrl(name || url)\n        }\n      ],\n      type: \"post\",\n      status: \"scheduled\",\n      scheduleDate,\n      userId: USER_ID,\n      mediaOptimization: true\n    }\n  };\n});\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -336
+      ],
+      "id": "8a529093-1965-4674-9749-333b336a3388",
+      "name": "Create Post"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/social-media-posting/Ug16dt3qfWWQu0tliuGr/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "highLevelOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-56538758-REDACTED"
+            },
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "name": "Post GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1312,
+        -336
+      ],
+      "id": "211e0302-b14a-4ef7-a463-1fc6a7d363b4",
+      "credentials": {
+        "highLevelOAuth2Api": {
+          "id": "u3AKW6JpfeKoZ1RN",
+          "name": "Junction Cafe"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudinary.com/v1_1/dvouhqxi4/image/upload",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "upload_preset",
+              "value": "n8n_upload"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -176,
+        -528
+      ],
+      "id": "74d013d9-6ce2-415d-9d0c-1949681f1c7a",
+      "name": "Post Image To Cloudinary",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ClxF1juWxnVRUHTx",
+          "name": "Cloudinary"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.selected_image.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "fileName": "={{ $json.selected_image.name }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -608,
+        -528
+      ],
+      "id": "31422d25-eda6-4962-b3d9-c9e790f4cbbd",
+      "name": "Google Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const originalUrl = item.json.secure_url || \"\";\n  const transformations = \"e_auto_color,e_auto_contrast,e_sharpen:50,e_improve\";\n\n  let enhancedUrl = originalUrl;\n\n  // ✅ Check if Cloudinary URL & not already enhanced\n  if (originalUrl.includes(\"/upload/\") && !originalUrl.includes(\"e_auto_color\")) {\n    enhancedUrl = originalUrl.replace(\n      \"/upload/\",\n      `/upload/${transformations}/`\n    );\n  }\n\n  return {\n    json: {\n      secure_url: originalUrl,        // Original Cloudinary URL\n      enhanced_url: enhancedUrl,      // Enhanced if needed\n      used_url: enhancedUrl || originalUrl // Always safe to use\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -528
+      ],
+      "id": "c28201ed-4374-45ba-90a2-88a235537e48",
+      "name": "Edit Image"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1bnACi_E2l17XMpqBFeOs_n46_LjeQuxxcmH7xm8E5H4",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "text/plain"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1408,
+        -160
+      ],
+      "id": "c560e97e-d844-44b7-8a55-052640afce88",
+      "name": "Get Brand Brief",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        -400,
+        -176
+      ],
+      "id": "b909b66a-28b1-4cc8-b845-dd63c3e73607",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1088,
+        -160
+      ],
+      "id": "74e8a348-be7d-40a6-b878-4e0a8fd4e967",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a21ee2a4-d91d-4d91-8c7f-dced620f2730",
+              "name": "brandContext",
+              "value": "={{$json.data}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -736,
+        -160
+      ],
+      "id": "5c0f25eb-eca9-4ff2-808c-bf873c88c292",
+      "name": "Edit Fields"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get GHL Subaccounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GHL Subaccounts": {
+      "main": [
+        [
+          {
+            "node": "Get Brand Brief",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Images": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Google Drive",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Create Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Post": {
+      "main": [
+        [
+          {
+            "node": "Post GHL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Image To Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "Edit Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Post Image To Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Image": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Brand Brief": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Post GHL": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

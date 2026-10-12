@@ -1,0 +1,330 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useTestEnv } from './helpers.js';
+import { LEAD_EVENTS, leadEventByN8nPath, leadEventBySlug } from '../src/lead-tracker/events.js';
+import { handleLeadEvent, MissingMatchValueError, type SheetPort } from '../src/lead-tracker/handler.js';
+import type { SheetTable } from '../src/integrations/sheets.js';
+
+const HEADER = [
+  'Name',
+  'Lead Grade',
+  'PHONE NUMBER',
+  'EMAIL',
+  'OPTED IN DATE / TIME',
+  'Campaign',
+  'Audience',
+  'Creative',
+  'PIC',
+  'Application Completed',
+  'Onboarded To PEE',
+  'Booked Call',
+  'Booked Call Strategy',
+  'Strategy Call Booked\nThrough Funnel',
+  'Showed Up / No Show',
+  'What’s your approx monthly revenue from private events?',
+  'Do you currently have a way of generating consistent private event enquiries?',
+  "What's your biggest challenge right now?",
+  'When do you want this problem solved?',
+  "What's your role in the business?",
+  'What best describes your catering business?',
+];
+
+interface Recorded {
+  updates: Array<{ rowNumber: number; cells: Record<string, string> }>;
+  appends: Array<Record<string, string>>;
+}
+
+function makePort(rows: SheetTable['rows'], header: string[] = HEADER): { port: SheetPort; log: Recorded } {
+  const log: Recorded = { updates: [], appends: [] };
+  const port: SheetPort = {
+    read: async () => ({ header, rows }),
+    update: async (_id, _title, hdr, rowNumber, cells) => {
+      log.updates.push({ rowNumber, cells });
+      const known = Object.keys(cells).filter((c) => hdr.includes(c));
+      return { updated: known, unknownColumns: Object.keys(cells).filter((c) => !hdr.includes(c)) };
+    },
+    append: async (_id, _title, hdr, cells) => {
+      log.appends.push(cells);
+      return { unknownColumns: Object.keys(cells).filter((c) => !hdr.includes(c)) };
+    },
+  };
+  return { port, log };
+}
+
+beforeEach(() => {
+  useTestEnv();
+});
+
+describe('event registry', () => {
+  it('exposes all six workflows', () => {
+    expect(LEAD_EVENTS).toHaveLength(6);
+    expect(LEAD_EVENTS.map((e) => e.slug)).toEqual([
+      'pee-optin',
+      'pee-created',
+      'pee-created-lovable',
+      'strategy-call-booked',
+      'triage-call-booked',
+      'triage-call-showed',
+    ]);
+  });
+
+  it('keeps the original n8n webhook paths resolvable, so GHL only needs a new host', () => {
+    expect(leadEventByN8nPath('b7cfa33b-4a60-41ea-8b89-23cac76f335a')?.slug).toBe('pee-optin');
+    expect(leadEventByN8nPath('42a66325-4037-4f75-a3e5-5edecde0cd83')?.slug).toBe('triage-call-showed');
+    expect(leadEventByN8nPath('nope')).toBeUndefined();
+  });
+
+  it('uses unique slugs and unique paths', () => {
+    expect(new Set(LEAD_EVENTS.map((e) => e.slug)).size).toBe(6);
+    expect(new Set(LEAD_EVENTS.map((e) => e.n8nPath)).size).toBe(6);
+  });
+
+  it('only maps columns that exist in the sheet header', () => {
+    for (const event of LEAD_EVENTS) {
+      for (const column of [...Object.keys(event.onUpdate), ...Object.keys(event.onAppend)]) {
+        expect(HEADER, `${event.slug}: unknown column "${column}"`).toContain(column);
+      }
+    }
+  });
+});
+
+describe('handleLeadEvent routing', () => {
+  it('appends when the email is not in the sheet', async () => {
+    const { port, log } = makePort([]);
+    const result = await handleLeadEvent(leadEventBySlug('strategy-call-booked')!, {
+      full_name: 'Ann Smith',
+      phone: '+61400000000',
+      email: 'ann@example.com',
+    }, port);
+
+    expect(result.action).toBe('appended');
+    expect(log.updates).toHaveLength(0);
+    expect(log.appends[0]).toMatchObject({
+      Name: 'Ann Smith',
+      'PHONE NUMBER': '+61400000000',
+      EMAIL: 'ann@example.com',
+      'Booked Call Strategy': 'Yes',
+      'Strategy Call Booked\nThrough Funnel': 'Yes',
+    });
+  });
+
+  it('updates the matching row when the email is already present', async () => {
+    const { port, log } = makePort([
+      { rowNumber: 7, values: { EMAIL: 'ann@example.com', Name: 'Ann Smith', 'PHONE NUMBER': '+61400000000' } },
+    ]);
+    const result = await handleLeadEvent(leadEventBySlug('strategy-call-booked')!, { email: 'ANN@example.com' }, port);
+
+    expect(result).toMatchObject({ action: 'updated', rowNumber: 7 });
+    expect(log.appends).toHaveLength(0);
+    expect(log.updates[0]).toEqual({
+      rowNumber: 7,
+      cells: { 'Booked Call Strategy': 'Yes', 'Strategy Call Booked\nThrough Funnel': 'Yes' },
+    });
+  });
+
+  it('rejects a payload with no email rather than appending a blank row', async () => {
+    const { port, log } = makePort([]);
+    await expect(handleLeadEvent(leadEventBySlug('pee-optin')!, { full_name: 'No Email' }, port)).rejects.toThrow(
+      MissingMatchValueError,
+    );
+    expect(log.appends).toHaveLength(0);
+    expect(log.updates).toHaveLength(0);
+  });
+
+  it('fails loudly when the sheet has no EMAIL column', async () => {
+    const { port } = makePort([], ['Name', 'Phone']);
+    await expect(
+      handleLeadEvent(leadEventBySlug('pee-optin')!, { email: 'a@b.com' }, port),
+    ).rejects.toThrow(/no "EMAIL" column/);
+  });
+});
+
+describe('pee-optin mapping', () => {
+  const body = {
+    full_name: 'Ann Smith',
+    phone: '+61400000000',
+    email: 'ann@example.com',
+    PIC: 'Sam',
+    contact: {
+      attributionSource: { campaign: 'spring-2026', utmMedium: 'lookalike-1' },
+      lastAttributionSource: { utmContent: 'carousel-a' },
+    },
+    customData: { 'Survey Submitted Date': '12/10/2026 9:15:00 am' },
+    // Note the trailing space in the GHL form field names.
+    'What’s your approx monthly revenue from private events? ': '$10k-$20k',
+    'Do you currently have a way of generating consistent private event enquiries? ': 'No',
+  };
+
+  it('maps attribution, PIC and the trailing-space survey fields on append', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, body, port);
+
+    expect(log.appends[0]).toEqual({
+      Name: 'Ann Smith',
+      'PHONE NUMBER': '+61400000000',
+      EMAIL: 'ann@example.com',
+      Campaign: 'spring-2026',
+      Audience: 'lookalike-1',
+      Creative: 'carousel-a',
+      PIC: 'Sam',
+      'Application Completed': 'Yes',
+      'OPTED IN DATE / TIME': '12/10/2026 9:15:00 am',
+      'What’s your approx monthly revenue from private events?': '$10k-$20k',
+      'Do you currently have a way of generating consistent private event enquiries?': 'No',
+    });
+  });
+
+  it('also accepts the survey field names without the trailing space', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      {
+        email: 'ann@example.com',
+        'What’s your approx monthly revenue from private events?': '$20k+',
+        'Do you currently have a way of generating consistent private event enquiries?': 'Yes',
+      },
+      port,
+    );
+
+    expect(log.appends[0]?.['What’s your approx monthly revenue from private events?']).toBe('$20k+');
+    expect(
+      log.appends[0]?.['Do you currently have a way of generating consistent private event enquiries?'],
+    ).toBe('Yes');
+  });
+
+  it('writes empty strings for absent optional fields instead of "undefined"', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, { email: 'ann@example.com' }, port);
+
+    expect(log.appends[0]?.['Campaign']).toBe('');
+    expect(log.appends[0]?.['PIC']).toBe('');
+    expect(Object.values(log.appends[0] ?? {}).join('')).not.toContain('undefined');
+  });
+});
+
+describe('pee-created-lovable mapping', () => {
+  const body = {
+    name: 'Bo Nguyen',
+    phone: '+61411111111',
+    email: 'bo@example.com',
+    submitted_at: '2026-07-15T04:05:06.000Z',
+    campaign: 'lovable-launch',
+    utmMedium: 'interest-2',
+    utmContent: 'video-b',
+    answers: {
+      "What's your approximate monthly catering revenue right now? *": '$5k-$10k',
+      "What's your biggest challenge right now? *": 'Lead flow',
+      'When do you want this problem solved? *': 'This quarter',
+      "What's your role in the business? *": 'Owner',
+      'What best describes your catering business? *': 'Food truck',
+    },
+  };
+
+  it('reads the nested answers object and formats submitted_at for the sheet', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-created-lovable')!, body, port);
+
+    expect(log.appends[0]).toMatchObject({
+      Name: 'Bo Nguyen',
+      EMAIL: 'bo@example.com',
+      'OPTED IN DATE / TIME': '15/07/2026 2:05:06 pm',
+      Campaign: 'lovable-launch',
+      Audience: 'interest-2',
+      Creative: 'video-b',
+      'Application Completed': 'Yes',
+      'What’s your approx monthly revenue from private events?': '$5k-$10k',
+      "What's your biggest challenge right now?": 'Lead flow',
+      'When do you want this problem solved?': 'This quarter',
+      "What's your role in the business?": 'Owner',
+      'What best describes your catering business?': 'Food truck',
+    });
+  });
+
+  it('writes the same answer set on update as on append', async () => {
+    const event = leadEventBySlug('pee-created-lovable')!;
+    expect(new Set(Object.keys(event.onUpdate))).toEqual(new Set(Object.keys(event.onAppend)));
+  });
+});
+
+describe('triage-call-booked mapping', () => {
+  it('carries the existing row values through unchanged on update', async () => {
+    const { port, log } = makePort([
+      {
+        rowNumber: 4,
+        values: { EMAIL: 'cam@example.com', Name: 'Cam Lee', 'PHONE NUMBER': '+61422222222' },
+      },
+    ]);
+
+    await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      {
+        email: 'cam@example.com',
+        contact: { attributionSource: { campaign: 'c', utmMedium: 'm', utmContent: 'x' } },
+        customData: { 'Survey Submitted': '1/2/2026 10:00:00 am' },
+      },
+      port,
+    );
+
+    expect(log.updates[0]?.cells).toEqual({
+      Name: 'Cam Lee',
+      'PHONE NUMBER': '+61422222222',
+      EMAIL: 'cam@example.com',
+      Campaign: 'c',
+      Audience: 'm',
+      Creative: 'x',
+      'OPTED IN DATE / TIME': '1/2/2026 10:00:00 am',
+      'Booked Call': 'Booked',
+    });
+  });
+
+  it('appends an unseen lead instead of dropping it, unlike the n8n original', async () => {
+    const { port, log } = makePort([]);
+    const result = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      {
+        full_name: 'Dee Park',
+        phone: '+61433333333',
+        email: 'dee@example.com',
+        contact: {
+          attributionSource: { campaign: 'c2', utmMedium: 'm2' },
+          lastAttributionSource: { utmContent: 'last-creative' },
+        },
+        customData: { 'Survey Submitted': '3/4/2026 11:00:00 am' },
+      },
+      port,
+    );
+
+    expect(result.action).toBe('appended');
+    expect(log.appends[0]).toMatchObject({
+      Name: 'Dee Park',
+      EMAIL: 'dee@example.com',
+      Creative: 'last-creative',
+      'Booked Call': 'Booked',
+    });
+  });
+});
+
+describe('triage-call-showed mapping', () => {
+  it('writes the GHL appointment status verbatim on update', async () => {
+    const { port, log } = makePort([{ rowNumber: 9, values: { EMAIL: 'ed@example.com' } }]);
+    await handleLeadEvent(
+      leadEventBySlug('triage-call-showed')!,
+      { email: 'ed@example.com', customData: { Appt_Status: 'No Show' } },
+      port,
+    );
+    expect(log.updates[0]?.cells).toEqual({ 'Showed Up / No Show': 'No Show' });
+  });
+
+  it('defaults a brand-new row to "Showed"', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('triage-call-showed')!, { email: 'ed@example.com' }, port);
+    expect(log.appends[0]?.['Showed Up / No Show']).toBe('Showed');
+  });
+});
+
+describe('pee-created mapping', () => {
+  it('reproduces the original behaviour of blanking "Booked Call Strategy"', async () => {
+    const { port, log } = makePort([{ rowNumber: 5, values: { EMAIL: 'fi@example.com', 'Booked Call Strategy': 'Yes' } }]);
+    await handleLeadEvent(leadEventBySlug('pee-created')!, { email: 'fi@example.com' }, port);
+    expect(log.updates[0]?.cells).toEqual({ 'Booked Call Strategy': '', 'Onboarded To PEE': 'Yes' });
+  });
+});

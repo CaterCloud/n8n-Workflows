@@ -1,0 +1,1005 @@
+{
+  "name": "AI-Powered CSM Operations Assistant via WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "id": "99a4f0c8-bada-464f-82e4-46fec43e065e",
+      "name": "WhatsApp Message Received",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        288
+      ],
+      "webhookId": "b8218f7f-d820-450f-a591-dd0c4023da96"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ghlApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__GoHighLevel API Base URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "ghlApiKey",
+              "value": "<__PLACEHOLDER_VALUE__GoHighLevel API Key__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "clickupTeamId",
+              "value": "<__PLACEHOLDER_VALUE__ClickUp Team ID__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "googleDriveFolderId",
+              "value": "<__PLACEHOLDER_VALUE__Google Drive Folder ID for client assets__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "logSheetId",
+              "value": "<__PLACEHOLDER_VALUE__Google Sheets ID for logging__>",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "approvalThreshold",
+              "value": "AMBER",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "46fdc29d-747b-49e2-9848-ea01811e235d",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "messageText",
+              "value": "={{ $json.entry[0].changes[0].value.messages[0].text.body }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "senderPhone",
+              "value": "={{ $json.entry[0].changes[0].value.messages[0].from }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "messageId",
+              "value": "={{ $json.entry[0].changes[0].value.messages[0].id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "c9a09826-c20e-4199-b448-f58b1cb5fcf0",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.messageText }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an intent classification assistant for a CSM operations system.\n\nYour task is to analyze incoming WhatsApp messages and classify them into one of the following intent categories:\n\n- STATUS_QUERY: Questions about current status, pipeline stages, or general information requests\n- BLOCKER_QUERY: Questions about what is blocked, stuck, or preventing progress\n- MISSING_ASSETS: Questions about missing documents, files, or assets\n- DRAFT_MESSAGE: Requests to draft or compose a message to a client\n- CREATE_TASK: Requests to create a task or assign work to someone\n- READINESS_CHECK: Questions about whether clients are ready for specific actions (ads, build, launch, etc.)\n- UNKNOWN: Messages that do not fit any of the above categories\n\nExtract the client name if mentioned in the message. Return your classification in the structured format."
+        }
+      },
+      "id": "5a457386-7fdf-42ab-b34e-e5c5626acd58",
+      "name": "Intent Classifier Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        728,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "70cd20da-284d-4b6d-a183-8f5f9a286b7d",
+      "name": "OpenAI Chat Model - Classifier",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        512
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "5zuncWDIceveqruE",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"intent\": {\n      \"type\": \"string\",\n      \"enum\": [\"STATUS_QUERY\", \"BLOCKER_QUERY\", \"MISSING_ASSETS\", \"DRAFT_MESSAGE\", \"CREATE_TASK\", \"READINESS_CHECK\", \"UNKNOWN\"]\n    },\n    \"clientName\": {\n      \"type\": \"string\"\n    },\n    \"confidence\": {\n      \"type\": \"number\"\n    }\n  },\n  \"required\": [\"intent\", \"confidence\"]\n}"
+      },
+      "id": "2a2f75f0-d0dd-4fe7-b35c-510df2ce95b7",
+      "name": "Intent Classification Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "STATUS_QUERY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "STATUS_QUERY"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "BLOCKER_QUERY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "BLOCKER_QUERY"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "MISSING_ASSETS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "MISSING_ASSETS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "CREATE_TASK",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CREATE_TASK"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Other Intents"
+        }
+      },
+      "id": "f2f89aae-9a98-428a-8ec1-ca47fbaee88b",
+      "name": "Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1136,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.ghlApiUrl }}/contacts",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.clientName || \"\" }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Workflow Configuration').first().json.ghlApiKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bde19a90-199e-41b1-b327-2d5450e27215",
+      "name": "Fetch GoHighLevel Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "team": "={{ $('Workflow Configuration').first().json.clickupTeamId }}",
+        "filters": {
+          "statuses": [
+            "overdue",
+            "blocked"
+          ]
+        }
+      },
+      "id": "62c941e4-4860-49ad-acd9-2e1089bf8cc1",
+      "name": "Fetch ClickUp Tasks",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ $('Workflow Configuration').first().json.clientName ? 'name contains \\'' + $('Workflow Configuration').first().json.clientName + '\\'' : '' }}",
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $('Workflow Configuration').first().json.googleDriveFolderId }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "2685b0a1-f688-4ea2-892e-cbd6c7fa0926",
+      "name": "Check Google Drive Assets",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        384
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "primary"
+        },
+        "limit": 10,
+        "timeMin": "={{ new Date().toISOString() }}",
+        "timeMax": "={{ new Date(Date.now() + 7*24*60*60*1000).toISOString() }}",
+        "options": {}
+      },
+      "id": "a2e8dfa7-8966-4793-9213-e0d18eac6a9f",
+      "name": "Fetch Calendar Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1360,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "contextData",
+              "value": "={{ JSON.stringify($input.all()) }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "originalMessage",
+              "value": "={{ $('Extract Message Data').first().json.messageText }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "intent",
+              "value": "={{ $('Intent Classifier Agent').first().json.intent }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "c80ddb77-7cd8-41b6-805f-a027bf14121d",
+      "name": "Merge Context Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1584,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Original message: {{ $json.originalMessage }}\n\nIntent: {{ $json.intent }}\n\nContext data: {{ $json.contextData }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a CSM operations reasoning assistant.\n\nYour task is to analyze the user's request along with the provided context data and generate an appropriate response.\n\nBased on the intent, you should:\n\n**STATUS_QUERY**: Summarize the current status from GoHighLevel data, pipeline stages, and notes\n\n**BLOCKER_QUERY**: Identify and list all blockers from ClickUp tasks, missing assets, or pipeline notes. Be specific about what is blocking progress.\n\n**MISSING_ASSETS**: Check Google Drive data and identify which required assets are missing (brand brief, menu doc, images, etc.)\n\n**DRAFT_MESSAGE**: Compose a professional, founder-style message to the client. Be concise, friendly, and action-oriented.\n\n**CREATE_TASK**: Generate a clear task title and detailed description based on the request. Include assignee if mentioned.\n\n**READINESS_CHECK**: Analyze the context to determine if the client is ready for the requested action (ads, build, etc.). List what is complete and what is still needed.\n\nAlways:\n- Use actual data from the context, never hallucinate\n- Be concise and actionable\n- Determine the approval level: GREEN (auto-execute), AMBER (needs approval), or RED (never auto-execute)\n- For client-facing messages, always set approval to AMBER\n\nReturn your response in the structured format."
+        }
+      },
+      "id": "7ba752b1-91de-4a99-ad57-b8d843d5bde4",
+      "name": "Reasoning Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1808,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "f13ff37c-d40d-4ff3-890b-47670596c9be",
+      "name": "OpenAI Chat Model - Reasoning",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1816,
+        512
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "5zuncWDIceveqruE",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"string\"\n    },\n    \"approvalLevel\": {\n      \"type\": \"string\",\n      \"enum\": [\"GREEN\", \"AMBER\", \"RED\"]\n    },\n    \"actionType\": {\n      \"type\": \"string\",\n      \"enum\": [\"SEND_MESSAGE\", \"CREATE_TASK\", \"UPDATE_RECORD\", \"NONE\"]\n    },\n    \"actionData\": {\n      \"type\": \"object\"\n    }\n  },\n  \"required\": [\"response\", \"approvalLevel\", \"actionType\"]\n}"
+      },
+      "id": "7153a737-a01d-4163-842b-8cedb139a077",
+      "name": "Reasoning Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1944,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Reasoning Agent').item.json.approvalLevel }}",
+              "rightValue": "AMBER",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "id-2",
+              "leftValue": "={{ $('Reasoning Agent').item.json.approvalLevel }}",
+              "rightValue": "RED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "270f5e61-513f-411a-bbf8-2c384e27b481",
+      "name": "Check Approval Required",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2160,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').first().json.senderPhone }}",
+        "textBody": "=📋 **Approval Required**\n\n{{ $json.response }}\n\n---\n\nApproval level: {{ $json.approvalLevel }}\nAction: {{ $json.actionType }}\n\n**Reply \"yes\" to approve or \"no\" to cancel.**",
+        "additionalFields": {}
+      },
+      "id": "0f9bafe5-fe1b-4beb-a1f4-7ecf01181cc0",
+      "name": "Send Approval Request",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2608,
+        192
+      ],
+      "webhookId": "9416fb64-5e11-4a59-8515-7e13ae6d3ecd"
+    },
+    {
+      "parameters": {
+        "list": "={{ $json.actionData.listId || \"<__PLACEHOLDER_VALUE__Default ClickUp List ID__>\" }}",
+        "name": "={{ $json.actionData.taskTitle || \"New Task\" }}",
+        "additionalFields": {
+          "content": "={{ $json.actionData.taskDescription || \"\" }}"
+        }
+      },
+      "id": "dcdd5c7b-867b-40cc-bf9b-0d2e3af1de88",
+      "name": "Create ClickUp Task",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        2384,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').first().json.senderPhone }}",
+        "textBody": "=✅ {{ $json.response }}",
+        "additionalFields": {}
+      },
+      "id": "658e759a-4c3c-4906-a3c7-51513ca43440",
+      "name": "Send WhatsApp Response",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2608,
+        384
+      ],
+      "webhookId": "d30a22cf-99e8-43fc-945d-410977d6dc78"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.logSheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "messageId": "={{ $json.messageId }}",
+            "senderPhone": "={{ $json.senderPhone }}",
+            "command": "={{ $json.command }}",
+            "intent": "={{ $json.intent }}",
+            "clientName": "={{ $json.clientName }}",
+            "approvalRequired": "={{ $json.approvalRequired }}",
+            "approvalLevel": "={{ $json.approvalLevel }}",
+            "actionType": "={{ $json.actionType }}",
+            "aiResponse": "={{ $json.aiResponse }}",
+            "executed": "={{ $json.executed }}"
+          },
+          "matchingColumns": [
+            "timestamp",
+            "messageId",
+            "senderPhone",
+            "command",
+            "intent",
+            "clientName",
+            "approvalRequired",
+            "approvalLevel",
+            "actionType",
+            "aiResponse",
+            "executed"
+          ],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "messageId",
+              "displayName": "messageId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "senderPhone",
+              "displayName": "senderPhone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "command",
+              "displayName": "command",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "clientName",
+              "displayName": "clientName",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approvalRequired",
+              "displayName": "approvalRequired",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approvalLevel",
+              "displayName": "approvalLevel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actionType",
+              "displayName": "actionType",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "aiResponse",
+              "displayName": "aiResponse",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "executed",
+              "displayName": "executed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c84daea6-3dcf-4f1d-b70e-7dd5973c5e47",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3056,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "sessionKey": "={{ $('Extract Message Data').first().json.senderPhone }}",
+        "contextWindowLength": 10
+      },
+      "id": "973aad32-1192-41d3-9c85-aa60c06aed43",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const extractedData = $('Extract Message Data').first().json;\nconst classifierData = $('Intent Classifier Agent').first().json;\nconst reasoningData = $('Reasoning Agent').first().json;\n\nreturn {\n  timestamp: new Date().toISOString(),\n  messageId: extractedData.messageId,\n  senderPhone: extractedData.senderPhone,\n  command: extractedData.messageText,\n  intent: classifierData.intent,\n  clientName: classifierData.clientName || 'N/A',\n  approvalRequired: reasoningData.approvalLevel !== 'GREEN',\n  approvalLevel: reasoningData.approvalLevel,\n  actionType: reasoningData.actionType,\n  aiResponse: reasoningData.response,\n  executed: reasoningData.approvalLevel === 'GREEN'\n};"
+      },
+      "id": "c36a94a2-f5e4-41f0-a48f-17384c33316a",
+      "name": "Prepare Log Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        288
+      ]
+    }
+  ],
+  "connections": {
+    "WhatsApp Message Received": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Intent Classifier Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model - Classifier": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Intent Classifier Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intent Classification Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Intent Classifier Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Intent Classifier Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Reasoning Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intent Classifier Agent": {
+      "main": [
+        [
+          {
+            "node": "Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "Fetch GoHighLevel Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch ClickUp Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Google Drive Assets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Calendar Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch GoHighLevel Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Context Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch ClickUp Tasks": {
+      "main": [
+        [
+          {
+            "node": "Merge Context Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Google Drive Assets": {
+      "main": [
+        [
+          {
+            "node": "Merge Context Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Calendar Events": {
+      "main": [
+        [
+          {
+            "node": "Merge Context Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Context Data": {
+      "main": [
+        [
+          {
+            "node": "Reasoning Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model - Reasoning": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Reasoning Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reasoning Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Reasoning Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reasoning Agent": {
+      "main": [
+        [
+          {
+            "node": "Check Approval Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Approval Required": {
+      "main": [
+        [
+          {
+            "node": "Send Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create ClickUp Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approval Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create ClickUp Task": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Response": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Entry": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

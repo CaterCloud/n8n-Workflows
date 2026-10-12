@@ -1,0 +1,553 @@
+{
+  "name": "Spanish Paella GHL + N8N Socai Media Posting Monthly",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "custom",
+              "cronExpression": "=0 10 25 * *"
+            }
+          ]
+        }
+      },
+      "id": "81d5b9d9-44b8-4262-9e3a-ccda54064fdc",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1760,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://rest.gohighlevel.com/v1/locations/RMmf289hB5J7LjtJJLYt",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer REDACTED_JWT"
+            }
+          ]
+        }
+      },
+      "id": "fb498225-82af-4eed-a916-6966e5e52654",
+      "name": "Get GHL Subaccounts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        -1360,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are the social copywriter for {{ $json.brand_name || 'the business' }}. Write in Australian English. Sound like a real human from the brand team: relaxed, clear, no hype. Use blunt humour sparingly (only when asked), avoid clichés, and NEVER invent details (no fake times, prices, locations, or availability).\n\nINPUTS (some may be empty — if empty, don’t guess)\n- Brand Context (JSON/text): {{ $json.brandContext }}\n- Brand Brief (optional): {{ $json.brand_brief || '' }}\n- Website Summary (optional): {{ $json.website_text || '' }}\n- Menu Summary (optional): {{ $json.menu_text || '' }}\n- Service List (optional): {{ $json.service_list || '' }}\n- Review Snippets (optional): {{ $json.review_snippets || '' }}\n- Previous Posts (JSON array of recent captions): {{ $json.previous_posts || '[]' }}\n- Media URL: {{ $json.selected_image.url }}\n- Folder Category/Theme: {{ $json.folder_category || '' }}   // shop, staff, customers, food, events\n- City/Area: {{ $json.city || '' }}\n- Platforms Connected (csv): {{ $json.platforms || 'instagram,facebook,google_my_business' }} // may include 'tiktok'\n- Link (optional): {{ $json.link || '' }} // use only on FB/GMB\n- Forced Pillar (optional): {{ $json.pillar || '' }} // otherwise choose best match\n- Locale: {{ $json.locale || 'en-AU' }}\n- Promote Private Events (bool ~50% of posts): {{ $json.promote_private_event === true ? 'true' : 'false' }}\n- Tone Mode: {{ $json.tone_mode || 'auto' }} // 'auto' | 'straight' | 'blunt'\n- Humour Probability (0–1 when tone_mode='auto'): {{ $json.humour_probability || '0.35' }}\n- Allowed Hashtags (JSON): {{ $json.allowed_hashtags || '[]' }}\n- Banned Hashtags (JSON): {{ $json.banned_hashtags || '[]' }}\n\nGOALS\n1) Ground the caption in what’s clearly visible in the media (one friendly line). If uncertain, use a safe generality (e.g., “fresh, avo-loaded goodness”).\n2) Choose exactly ONE content pillar (see PILLARS). If \"Forced Pillar\" is set, use it; otherwise infer from media + folder category + brand context.\n3) If Promote Private Events = true, naturally allude to private catering (weddings, corporate, parties) and include a soft CTA variant:\n   - Primary variant: “Head to the link in our bio to view our menu and generate an instant quote!”\n   - Instagram/TikTok: refer to “link in bio”.\n   - Facebook/GMB: include {{ $json.link }} if provided; if not, use “Message us to book.”\n   - Vary phrasing across posts to avoid repetition.\n4) Match the brand’s voice and cadence from Brand Context + Previous Posts. Do NOT echo the same openers used recently.\n\nPILLARS (pick one)\n- Reviews / Testimonials\n- Service Awareness\n- Seasonal Awareness\n- Event Reports\n- Menu Spotlights\n- Client Use Cases\n- Behind the Scenes / Team Life\n- Calls to Action\n- Social Proof Extensions\n- Event Promotions / Limited Offers\n- Brand Story / Founder Insights\n- Testimonials as Mini-Stories\n- Community & Reposts\n\nTONE MIX\n- If tone_mode='straight' → keep it direct and food/service-led.\n- If tone_mode='blunt' → allow dry, understated lines (no sarcasm about customers/staff).\n- If tone_mode='auto' → use humour with probability {{ $json.humour_probability || '0.35' }}; otherwise keep straight.\n\nPLATFORM RULES\n- Instagram: punchy opener; short lines; 2–5 relevant hashtags (use allowed_hashtags; exclude banned); no links; ≤ 120 words. Max 1 emoji only if natural.\n- Facebook: one short conversational paragraph; include {{ $json.link }} if provided; 0–3 hashtags; gentle CTA if appropriate.\n- Google My Business: 1–2 sentences; no emojis/hashtags; mention “{{ $json.brand_name || 'The business' }}” and {{ $json.city || 'the city' }} once; include {{ $json.link }} if provided; factual tone.\n- TikTok (only if connected): short hook + body; 1–3 natural hashtags; no links; casual.\n\nGUARDRAILS\n- Respect locale spelling ({{ $json.locale }}).\n- No overpromising availability. No cliché words (“best ever”, “mouthwatering”).\n- Avoid repeating recent phrasing from Previous Posts (vary openers and CTAs).\n- If forced pillar doesn’t fit the media, adapt copy but keep the pillar label intent.\n- Keep JSON valid: return JSON only; no markdown, commentary, or trailing commas. Use \\n for line breaks inside strings.\n\nOUTPUT (return JSON only):\n{\n  \"caption\": \"Base caption suitable for all platforms (<= 120 words, natural line breaks with \\\\n).\",\n  \"platform_variations\": {\n    \"instagram\": \"IG-optimised caption with 2–5 relevant hashtags; 'link in bio' if CTA used.\",\n    \"facebook\": \"FB-optimised caption; include {{ $json.link }} if provided; 0–3 hashtags.\",\n    \"google_my_business\": \"GMB-optimised caption; 1–2 sentences; no hashtags/emojis; mention brand and city once; include link if provided.\",\n    \"tiktok\": \"If TikTok not connected, return an empty string; else a short hook + body with 1–3 hashtags; no links.\"\n  }\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        780,
+        -180
+      ],
+      "id": "c1444356-c04e-45f9-bd77-8a6c95b923f5",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "vwCvepUOnSCuTd0t",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "(   '1vBEr5-M0gENytP7hoDy9IfisDmVLkj2c' in parents or   '1cDxcukpHcnEmGMh5E2WJQwNM7z8C7hIi' in parents or   '1xSPgB-uzmw9SfqNrG6QEmr9GyZz5NvFp' in parents or   '1PHutRoSunX1jJ2mDOsbmuz8KJL-XhiYX' in parents ) and mimeType contains 'image/' and trashed = false",
+        "returnAll": true,
+        "filter": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -960,
+        -520
+      ],
+      "id": "ae2b7db9-a002-4fd6-826e-f791b2d1aaf2",
+      "name": "Get Images",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  // Clean and parse the OpenAI JSON string\n  const cleanContent = (item.json.message?.content || \"\")\n    .replace(/```json\\n?/gi, \"\")\n    .replace(/```/g, \"\")\n    .trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanContent);\n  } catch (e) {\n    parsed = {\n      caption: \"Default caption\",\n      platform_variations: {\n        instagram: \"Default Instagram post\",\n        facebook: \"Default Facebook post\",\n        google_my_business: \"Default GMB post\"\n      }\n    };\n  }\n\n  return {\n    json: {\n      caption: parsed.caption,\n      instagram_caption: parsed.platform_variations.instagram,\n      facebook_caption: parsed.platform_variations.facebook,\n      gmb_caption: parsed.platform_variations.google_my_business\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -180
+      ],
+      "id": "0d0dc6b9-001a-44d9-850f-619240b5429b",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        1580,
+        -340
+      ],
+      "id": "b8ef3551-1aa9-4948-8d41-d1ee306e6195",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const originalUrl = item.json.secure_url || \"\";\n  const caption = (item.json.caption || \"Default caption\")\n    .replace(/[\\u{1F600}-\\u{1F6FF}]/gu, \"\"); // remove emojis\n\n  const transformations = \"e_auto_color,e_auto_contrast,e_sharpen:50,e_improve\";\n\n  const enhancedUrl =\n    originalUrl.includes(\"/upload/\") && !originalUrl.includes(\"e_auto_color\")\n      ? originalUrl.replace(\"/upload/\", `/upload/${transformations}/`)\n      : originalUrl;\n\n  return {\n    json: {\n      accountIds: [\n        \"6893f5a15e610eadc31ce823_RMmf289hB5J7LjtJJLYt_5785078155395707813\", // Google (location)\n        \"6893f54d5c4cf8633d4e3dd8_RMmf289hB5J7LjtJJLYt_360456737156031_page\", // Facebook Page\n        \"6893f586c9b9253d0eeba628_RMmf289hB5J7LjtJJLYt_17841466410443185\"  // Instagram Profile\n      ],\n      summary: caption, // caption only here\n      media: [\n        {\n          url: enhancedUrl,\n          type: \"image\"\n        }\n      ],\n      status: \"draft\",\n      type: \"post\",\n      userId: \"lWZjS6ppoRL7w9v2r1VM\"\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -340
+      ],
+      "id": "11de67d3-22c2-4897-9d84-ec6af01a1e9b",
+      "name": "Create Post"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/social-media-posting/RMmf289hB5J7LjtJJLYt/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "highLevelOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer pit-30954a68-REDACTED"
+            },
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "name": "Post GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2180,
+        -340
+      ],
+      "id": "3c31e9ad-58d3-4b5f-a6e4-92f37486333e",
+      "credentials": {
+        "highLevelOAuth2Api": {
+          "id": "u3AKW6JpfeKoZ1RN",
+          "name": "Spanish Paella"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudinary.com/v1_1/dvouhqxi4/image/upload",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "upload_preset",
+              "value": "n8n_upload"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        -520
+      ],
+      "id": "fca40b76-1d1b-41b7-a5b0-c9a2e33e5b9b",
+      "name": "Post Image To Cloudinary",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ClxF1juWxnVRUHTx",
+          "name": "Cloudinary"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.selected_image.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "fileName": "={{ $json.selected_image.name }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        60,
+        -520
+      ],
+      "id": "c7863ec5-5897-4a63-aa5b-692df19219dd",
+      "name": "Google Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const originalUrl = item.json.secure_url || \"\";\n  const transformations = \"e_auto_color,e_auto_contrast,e_sharpen:50,e_improve\";\n\n  let enhancedUrl = originalUrl;\n\n  // ✅ Check if Cloudinary URL & not already enhanced\n  if (originalUrl.includes(\"/upload/\") && !originalUrl.includes(\"e_auto_color\")) {\n    enhancedUrl = originalUrl.replace(\n      \"/upload/\",\n      `/upload/${transformations}/`\n    );\n  }\n\n  return {\n    json: {\n      secure_url: originalUrl,        // Original Cloudinary URL\n      enhanced_url: enhancedUrl,      // Enhanced if needed\n      used_url: enhancedUrl || originalUrl // Always safe to use\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        -520
+      ],
+      "id": "1c365ff0-a283-46cb-9b89-cf780cbbef2a",
+      "name": "Edit Image"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1dG8lf3XQeKEmgx28Ca7COaduE7JoDw6yI_N4CTx5iRI",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "text/plain"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -960,
+        -160
+      ],
+      "id": "5af093e3-b0e7-4df9-84f3-d5d19f7991ad",
+      "name": "Get Brand Brief",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Lmpyfqeva5PSxaiB",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        260,
+        -180
+      ],
+      "id": "75810394-a336-4cc5-9749-93294c941d60",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -160
+      ],
+      "id": "d50d8c51-c4a1-4030-8b15-cc0294f01043",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a21ee2a4-d91d-4d91-8c7f-dced620f2730",
+              "name": "brandContext",
+              "value": "={{$json.data}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -300,
+        -160
+      ],
+      "id": "f3b799b9-6cb0-4eb5-802b-f565f0df0a56",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputs = $input.all(); // Get brand context from Code1 const brandContextItem = inputs.find(i => i.json.brandContext); const brandContext = brandContextItem?.json.brandContext || ''; // Get image list and select a random image const imageItems = inputs.filter(i => i.json.id && i.json.name); const randomItem = imageItems[Math.floor(Math.random() * imageItems.length)]; const imageUrl = https://drive.google.com/uc?id=${randomItem.json.id}.trim(); return [ { json: { brandContext, selected_image: { id: randomItem.json.id, name: randomItem.json.name, url: imageUrl } } } ];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        -520
+      ],
+      "id": "673ee9e7-3553-4a6b-946a-fae3165d3407",
+      "name": "Code"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get GHL Subaccounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GHL Subaccounts": {
+      "main": [
+        [
+          {
+            "node": "Get Brand Brief",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Images": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Create Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Post": {
+      "main": [
+        [
+          {
+            "node": "Post GHL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Image To Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "Edit Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Post Image To Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Image": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Brand Brief": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Post GHL": {
+      "main": [
+        []
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
