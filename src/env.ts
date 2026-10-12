@@ -26,7 +26,12 @@ const schema = z.object({
    */
   TIMEZONE: z.string().default('Australia/Sydney'),
 
-  /** Google Sheets access — an OAuth user refresh token, as n8n held. */
+  /**
+   * Google Sheets access, either way round. A service account key is the
+   * simpler option and takes precedence; the OAuth trio is the same grant n8n
+   * held. See docs/GOOGLE-OAUTH.md.
+   */
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),

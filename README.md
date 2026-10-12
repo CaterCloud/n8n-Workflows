@@ -82,7 +82,7 @@ src/
   env.ts                    zod-validated environment
   http/server.ts            routes, auth, error mapping
   integrations/
-    google-auth.ts          OAuth refresh-token client (spreadsheets scope only)
+    google-auth.ts          service-account or OAuth client (spreadsheets scope only)
     sheets.ts               read table, find row, update cells, append row
   lead-tracker/
     events.ts               the six events as data: paths and column mappings
@@ -115,5 +115,5 @@ reference/n8n/              the six source exports, credentials redacted
 
 - [docs/N8N-MAPPING.md](docs/N8N-MAPPING.md) — the six workflows, their mappings, and their quirks
 - [docs/RAILWAY-DEPLOY.md](docs/RAILWAY-DEPLOY.md) — deploying and cutting over
-- [docs/GOOGLE-OAUTH.md](docs/GOOGLE-OAUTH.md) — minting the Google refresh token
+- [docs/GOOGLE-OAUTH.md](docs/GOOGLE-OAUTH.md) — giving the service access to the spreadsheet
 - [docs/SECRETS.md](docs/SECRETS.md) — credentials found in the export, and rotation

@@ -6,6 +6,7 @@ import { ConfigError, MissingMatchValueError, describeGoogleError } from '../lib
 import { withLock } from '../lib/mutex.js';
 import { LEAD_EVENTS, leadEventByN8nPath, leadEventBySlug, type LeadEvent } from '../lead-tracker/events.js';
 import { handleLeadEvent } from '../lead-tracker/handler.js';
+import { configuredAuthMode, serviceAccountEmail } from '../integrations/google-auth.js';
 
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -84,13 +85,20 @@ export function buildServer(): FastifyInstance {
 
   app.get('/ready', async () => {
     const e = env();
+    const authMode = configuredAuthMode();
     return {
       ok: true,
       timezone: e.TIMEZONE,
       dryRun: e.DRY_RUN,
       sheetName: e.LEAD_SHEET_NAME,
+      googleAuth: authMode ?? 'not configured',
+      /**
+       * Shown so the sheet can be shared with the right address. A service
+       * account email is not a secret — it is the whole point of sharing.
+       */
+      serviceAccountEmail: serviceAccountEmail() ?? null,
       configured: {
-        google: Boolean(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET && e.GOOGLE_REFRESH_TOKEN),
+        google: Boolean(authMode),
         leadSheet: Boolean(e.LEAD_SHEET_ID),
         webhookSecret: Boolean(e.WEBHOOK_SECRET),
         adminToken: Boolean(e.ADMIN_TOKEN),
