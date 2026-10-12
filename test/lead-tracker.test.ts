@@ -5,6 +5,10 @@ import { handleLeadEvent, type SheetPort } from '../src/lead-tracker/handler.js'
 import { MissingMatchValueError } from '../src/lib/errors.js';
 import type { SheetTable } from '../src/integrations/sheets.js';
 
+// The live header of the "PEE " tab, columns A..AN, captured 2026-10-12 and
+// cross-checked against the schema n8n itself recorded from the same sheet.
+// Mapped column names are matched against this, so a rename in the sheet
+// breaks a test here rather than silently writing nothing in production.
 const HEADER = [
   'Name',
   'Lead Grade',
@@ -15,18 +19,37 @@ const HEADER = [
   'Audience',
   'Creative',
   'PIC',
-  'Application Completed',
-  'Onboarded To PEE',
-  'Booked Call',
-  'Booked Call Strategy',
+  'Triage Call Booked\nTHrough Funnel',
   'Strategy Call Booked\nThrough Funnel',
-  'Showed Up / No Show',
-  'What’s your approx monthly revenue from private events?',
+  'Application Completed',
+  'What\u2019s your approx monthly revenue from private events?',
   'Do you currently have a way of generating consistent private event enquiries?',
+  'What best describes your catering business?',
   "What's your biggest challenge right now?",
   'When do you want this problem solved?',
   "What's your role in the business?",
-  'What best describes your catering business?',
+  'FOLLOW UP 2 (2 DAYS)',
+  'FOLLOW UP 3 (3 DAYS)',
+  'FOLLOW UP 4 (4 DAYS)',
+  'FOLLOW UP 5 (7 DAYS)',
+  '9',
+  '10',
+  '11',
+  '12',
+  '13',
+  '14',
+  '15',
+  '16',
+  '17',
+  'STATUS',
+  'COMMENTS',
+  'REASON LOST? (IF)',
+  'OPTED IN SERVICE',
+  'REPORTED REVENUE (RM)',
+  'Booked Call',
+  'Showed Up / No Show',
+  'Onboarded To PEE',
+  'Booked Call Strategy',
 ];
 
 interface Recorded {
@@ -388,5 +411,41 @@ describe('DRY_RUN', () => {
 
     expect(result).toMatchObject({ action: 'updated', rowNumber: 2, dryRun: true });
     expect(log.updates).toHaveLength(0);
+  });
+});
+
+describe('against the live sheet header', () => {
+  it('has the 40 columns the sheet has, in order', () => {
+    expect(HEADER).toHaveLength(40);
+    expect(HEADER[0]).toBe('Name');
+    expect(HEADER[39]).toBe('Booked Call Strategy');
+  });
+
+  it('maps only columns that exist, across every event and both branches', () => {
+    const unknown: string[] = [];
+    for (const event of LEAD_EVENTS) {
+      for (const column of [...Object.keys(event.onUpdate), ...Object.keys(event.onAppend)]) {
+        if (!HEADER.includes(column)) unknown.push(`${event.slug}: ${JSON.stringify(column)}`);
+      }
+    }
+    expect(unknown).toEqual([]);
+  });
+
+  it('keeps the exact characters the sheet uses, not lookalikes', () => {
+    // A curly apostrophe in the revenue column, straight ones in three others,
+    // and a literal newline in the strategy column.
+    expect(HEADER).toContain('What’s your approx monthly revenue from private events?');
+    expect(HEADER).not.toContain("What's your approx monthly revenue from private events?");
+    expect(HEADER).toContain("What's your biggest challenge right now?");
+    expect(HEADER).toContain('Strategy Call Booked\nThrough Funnel');
+  });
+
+  it('leaves the parallel triage funnel column alone, as the workflows did', () => {
+    // The sheet has "Triage Call Booked\nTHrough Funnel" (sic) alongside the
+    // strategy equivalent, but no workflow ever wrote it — triage-call-booked
+    // sets "Booked Call" instead. Reproduced, not corrected.
+    expect(HEADER).toContain('Triage Call Booked\nTHrough Funnel');
+    const allMapped = LEAD_EVENTS.flatMap((e) => [...Object.keys(e.onUpdate), ...Object.keys(e.onAppend)]);
+    expect(allMapped).not.toContain('Triage Call Booked\nTHrough Funnel');
   });
 });

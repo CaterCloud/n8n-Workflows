@@ -62,6 +62,53 @@ Append exists in the workflow but was unreachable; see below.
 **triage-call-showed** — Update: `Showed Up / No Show` from
 `customData.Appt_Status`, verbatim. Append defaults it to `Showed`.
 
+## The live sheet, verified
+
+Checked against the real spreadsheet on 2026-10-12 and cross-referenced with
+the column schema n8n itself had recorded from it. Both agree: 40 columns,
+`A`..`AN`, same order.
+
+**Every column the six events write exists in the sheet.** No renames, no
+drift. `test/lead-tracker.test.ts` now encodes that header, so if someone
+renames a column the test fails instead of the service silently writing
+nothing into a column that is not there.
+
+Three names are easy to get wrong and are reproduced byte for byte:
+
+| Column | Detail |
+| --- | --- |
+| `What’s your approx monthly revenue from private events?` | Curly apostrophe (U+2019) |
+| `What's your biggest challenge right now?` and two others | Straight apostrophe |
+| `Strategy Call Booked\nThrough Funnel` | Literal newline inside the header cell |
+
+Other observations, none of them blocking:
+
+- **The tab is `PEE ` with a trailing space**, confirmed. Its A1 ranges are
+  quoted accordingly.
+- **1,645 data rows.** Each webhook reads the tab to find its row, so that is
+  the working set; still well under a second, but it grows.
+- **`OPTED IN DATE / TIME` already holds two formats** — raw ISO
+  (`2025-10-28T22:10:53.952Z`) from the GoHighLevel events that pass the string
+  through, and `9/1/2026 9:28:59 PM` from the Lovable path that formats it.
+  That inconsistency predates this service and is preserved; normalising the
+  column would be a separate decision.
+- **The spreadsheet is owned by another Google account** and shared with the
+  CaterCloud one. The OAuth grant in `GOOGLE_REFRESH_TOKEN` therefore has to
+  belong to an account with edit access to it — see
+  [GOOGLE-OAUTH.md](GOOGLE-OAUTH.md).
+- **`Triage Call Booked\nTHrough Funnel` (column J, `THrough` sic) is never
+  written** by any of the six workflows, even though `strategy-call-booked`
+  writes the parallel column K for its own funnel. `triage-call-booked` sets
+  `Booked Call` = `Booked` instead. That looks like an oversight in the
+  original, but it is reproduced rather than guessed at — a test asserts no
+  event touches it, so the choice is explicit. If it should be filled, add
+  `'Triage Call Booked\nTHrough Funnel': constant('Yes')` to that event.
+- The workbook has five other tabs (`Funnel Booked Triage Cals`,
+  `Showed to Triage Call`, `Booked Strategy Call`,
+  `Converted/Onboarded to PEE`, `Sheet1`). No workflow reads or writes any of
+  them; they look like manually maintained views. This service only touches
+  `PEE `.
+
 ## Quirks reproduced from the export
 
 These are faithful to the workflows, not improvements. Each is a one-line
