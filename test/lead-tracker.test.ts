@@ -196,6 +196,11 @@ describe('pee-optin mapping', () => {
       'Application Completed': 'Yes',
       'What’s your approx monthly revenue from private events?': '$10k-$20k',
       'Do you currently have a way of generating consistent private event enquiries?': 'No',
+      // Mapped now, but this fixture predates the field names GoHighLevel sends.
+      "What's your biggest challenge right now?": '',
+      "What's your role in the business?": '',
+      'When do you want this problem solved?': '',
+      'What best describes your catering business?': '',
     });
   });
 
@@ -473,6 +478,10 @@ describe('emptyColumns', () => {
       'PIC',
       'What’s your approx monthly revenue from private events?',
       'Do you currently have a way of generating consistent private event enquiries?',
+      "What's your biggest challenge right now?",
+      "What's your role in the business?",
+      'When do you want this problem solved?',
+      'What best describes your catering business?',
     ]);
   });
 
@@ -492,6 +501,10 @@ describe('emptyColumns', () => {
         customData: { 'Survey Submitted Date': '12/10/2026 9:15:00 am' },
         'What’s your approx monthly revenue from private events? ': '$10k',
         'Do you currently have a way of generating consistent private event enquiries? ': 'No',
+        'Current Business Challenge': 'Lead flow',
+        'Business Role': 'Owner',
+        'Desired Solution Timeline': 'This quarter',
+        'Catering Business Type': 'Food truck',
       },
       port,
     );
@@ -753,5 +766,85 @@ describe('GoHighLevel attribution, as actually sent', () => {
       Audience: 'lov-med',
       Creative: 'lov-con',
     });
+  });
+});
+
+describe('the full survey answer set on PEE Optin', () => {
+  // Exactly the field names seen on a live lead.
+  const answers = {
+    email: 'survey@example.com',
+    full_name: 'Survey Lead',
+    phone: '+613000000001',
+    utm_medium: 'paid_social',
+    utm_campaign: '120248317508630046',
+    utm_content: '120248514540750046',
+    'Monthly Catering Revenue': '$40,000+/month',
+    'Current Business Challenge': 'Too much time chasing quotes and following up manually',
+    'Business Role': 'Other',
+    'Desired Solution Timeline': 'Just exploring for now',
+    'Catering Business Type': 'Food truck (markets, festivals, street events)',
+    customData: {},
+  };
+
+  it('writes all five answers plus attribution on append', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, answers, port);
+
+    expect(log.appends[0]).toMatchObject({
+      Campaign: '120248317508630046',
+      Audience: 'paid_social',
+      Creative: '120248514540750046',
+      'What’s your approx monthly revenue from private events?': '$40,000+/month',
+      "What's your biggest challenge right now?": 'Too much time chasing quotes and following up manually',
+      "What's your role in the business?": 'Other',
+      'When do you want this problem solved?': 'Just exploring for now',
+      'What best describes your catering business?': 'Food truck (markets, festivals, street events)',
+    });
+  });
+
+  it('writes the same answers on update', async () => {
+    const { port, log } = makePort([{ rowNumber: 12, values: { EMAIL: 'survey@example.com' } }]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, answers, port);
+
+    expect(log.updates[0]?.cells).toMatchObject({
+      "What's your biggest challenge right now?": 'Too much time chasing quotes and following up manually',
+      "What's your role in the business?": 'Other',
+      'When do you want this problem solved?': 'Just exploring for now',
+      'What best describes your catering business?': 'Food truck (markets, festivals, street events)',
+    });
+  });
+
+  it('leaves only the genuinely absent fields empty', async () => {
+    const { port } = makePort([]);
+    const result = await handleLeadEvent(leadEventBySlug('pee-optin')!, answers, port);
+    // PIC and the enquiries question were not sent by this lead.
+    expect(result.emptyColumns).toEqual([
+      'PIC',
+      'Do you currently have a way of generating consistent private event enquiries?',
+    ]);
+  });
+
+  it('does not overwrite an existing answer when a later webhook omits it', async () => {
+    const { port, log } = makePort([
+      {
+        rowNumber: 12,
+        values: {
+          EMAIL: 'survey@example.com',
+          "What's your biggest challenge right now?": 'Original answer',
+          "What's your role in the business?": 'Owner',
+        },
+      },
+    ]);
+
+    const result = await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      { email: 'survey@example.com' },
+      port,
+    );
+
+    expect(result.preservedColumns).toEqual(
+      expect.arrayContaining(["What's your biggest challenge right now?", "What's your role in the business?"]),
+    );
+    expect(log.updates[0]?.cells).not.toHaveProperty("What's your biggest challenge right now?");
   });
 });

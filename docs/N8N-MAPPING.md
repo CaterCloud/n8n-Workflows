@@ -184,8 +184,21 @@ shape keeps working. Applied to both PEE Optin and Triage Call Booked. The
 Lovable funnel sends its own `campaign` / `utmMedium` / `utmContent` and is
 unchanged.
 
-The revenue answer moved too — it now arrives as `Monthly Catering Revenue`
-rather than the old question-text key, which is tried after it.
+The survey answers moved too. They arrive under short field names rather than
+the full question text, and PEE Optin now writes all five:
+
+| Payload field | Sheet column |
+| --- | --- |
+| `Monthly Catering Revenue` | `What’s your approx monthly revenue from private events?` |
+| `Current Business Challenge` | `What's your biggest challenge right now?` |
+| `Business Role` | `What's your role in the business?` |
+| `Desired Solution Timeline` | `When do you want this problem solved?` |
+| `Catering Business Type` | `What best describes your catering business?` |
+
+The last four are columns PEE Optin did not write under n8n — only the Lovable
+funnel did — but GoHighLevel sends the answers and the sheet has the columns,
+so they are mapped rather than discarded. Each keeps the older question-text
+spelling as a fallback.
 
 ## Deliberate differences
 

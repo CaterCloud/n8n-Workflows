@@ -148,6 +148,28 @@ const SRC_ENQUIRIES = pick(
   "['Do you currently have a way of generating consistent private event enquiries?']",
 );
 
+/**
+ * The remaining survey answers, under the field names GoHighLevel sends today.
+ * Older spellings follow as fallbacks, so a form still using them keeps working.
+ */
+const SRC_CHALLENGE = pick(
+  "['Current Business Challenge']",
+  "['Biggest Challenge']",
+  "['What's your biggest challenge right now?']",
+  "['What's Your Biggest Challenge Right Now? ']",
+);
+const SRC_ROLE = pick("['Business Role']", "['What's your role in the business?']");
+const SRC_WHEN_SOLVED = pick(
+  "['Desired Solution Timeline']",
+  "['When do you want this problem solved?']",
+  "['How soon are you looking to improve or scale your private event bookings?']",
+);
+const SRC_DESCRIBES = pick(
+  "['Catering Business Type']",
+  "['What best describes your catering business?']",
+  "['What Type Of Catering Do You Do?']",
+);
+
 // The Lovable funnel nests its answers under `answers`, with a trailing ` *`.
 const SRC_ANSWER = (label: string): FieldMapper =>
   pick(`answers['${label} *']`, `answers['${label}']`);
@@ -165,6 +187,10 @@ export const LEAD_EVENTS: LeadEvent[] = [
       'Application Completed': constant('Yes'),
       [COL_REVENUE]: SRC_REVENUE,
       [COL_ENQUIRIES]: SRC_ENQUIRIES,
+      [COL_CHALLENGE]: SRC_CHALLENGE,
+      [COL_ROLE]: SRC_ROLE,
+      [COL_WHEN_SOLVED]: SRC_WHEN_SOLVED,
+      [COL_DESCRIBES]: SRC_DESCRIBES,
     },
     onAppend: {
       Name: pick('full_name'),
@@ -176,6 +202,10 @@ export const LEAD_EVENTS: LeadEvent[] = [
       PIC: pick('PIC'),
       [COL_REVENUE]: SRC_REVENUE,
       [COL_ENQUIRIES]: SRC_ENQUIRIES,
+      [COL_CHALLENGE]: SRC_CHALLENGE,
+      [COL_ROLE]: SRC_ROLE,
+      [COL_WHEN_SOLVED]: SRC_WHEN_SOLVED,
+      [COL_DESCRIBES]: SRC_DESCRIBES,
       'Application Completed': constant('Yes'),
       // Was customData['Survey Submitted Date'], which GoHighLevel does not
       // send on this action — it always resolved empty. Stamped on arrival
