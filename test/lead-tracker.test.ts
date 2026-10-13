@@ -631,6 +631,36 @@ describe('protecting existing values on update', () => {
     expect(log.updates[0]?.cells).not.toHaveProperty('Campaign');
   });
 
+  // The rule as the client stated it, for the one column it bites on most:
+  // populated in the sheet stays; empty on both sides is a no-op. Triage Call
+  // Booked maps "OPTED IN DATE / TIME" from customData, which GoHighLevel sends
+  // as an empty object, so this is the path every live booking takes.
+  it('never touches the opt-in timestamp a triage booking cannot supply', async () => {
+    const { port: withData, log: dataLog } = makePort([
+      { rowNumber: 8, values: { EMAIL: 'kept@y.com', 'OPTED IN DATE / TIME': '03/10/2026 4:30:00 pm' } },
+    ]);
+    const kept = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { email: 'kept@y.com', customData: {} },
+      withData,
+    );
+    expect(kept.preservedColumns).toContain('OPTED IN DATE / TIME');
+    expect(dataLog.updates[0]?.cells).not.toHaveProperty('OPTED IN DATE / TIME');
+
+    const { port: noData, log: blankLog } = makePort([
+      { rowNumber: 9, values: { EMAIL: 'blank@y.com', 'OPTED IN DATE / TIME': '' } },
+    ]);
+    const blank = await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { email: 'blank@y.com', customData: {} },
+      noData,
+    );
+    // Nothing on either side, so nothing is written and nothing is reported.
+    expect(blank.preservedColumns).not.toContain('OPTED IN DATE / TIME');
+    expect(blankLog.updates[0]?.cells).not.toHaveProperty('OPTED IN DATE / TIME');
+    expect(blankLog.updates[0]?.cells['Booked Call']).toBe('Booked');
+  });
+
   it('leaves appends untouched — a new row has nothing to protect', async () => {
     const { port, log } = makePort([]);
     const result = await handleLeadEvent(
