@@ -631,3 +631,127 @@ describe('protecting existing values on update', () => {
     expect(log.appends).toHaveLength(0);
   });
 });
+
+describe('GoHighLevel attribution, as actually sent', () => {
+  // Captured from a live PEE Optin webhook: GHL flattens its fields to the top
+  // level and sends an empty customData object.
+  const ghlPayload = {
+    contact_id: 'vKia7mGw2zTQzF8jc15f',
+    first_name: 'test',
+    last_name: 'rehan',
+    full_name: 'test rehan',
+    email: 'rehanzafar22211@gmail.com',
+    phone: '+613000000001',
+    utm_medium: 'paid_social',
+    utm_campaign: '120248317508630046',
+    utm_content: '120248514540750046',
+    utm_source: '',
+    'Monthly Catering Revenue': '$40,000+/month',
+    PIC: '',
+    Audience: '',
+    Creative: '',
+    customData: {},
+    contact: {
+      attributionSource: { sessionSource: 'CRM Workflows', medium: 'Manual', mediumId: null },
+      lastAttributionSource: {},
+    },
+  };
+
+  it('maps utm_campaign, utm_medium and utm_content to Campaign, Audience and Creative', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, ghlPayload, port);
+
+    expect(log.appends[0]).toMatchObject({
+      Campaign: '120248317508630046',
+      Audience: 'paid_social',
+      Creative: '120248514540750046',
+    });
+  });
+
+  it('picks up the revenue answer under its current field name', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(leadEventBySlug('pee-optin')!, ghlPayload, port);
+    expect(log.appends[0]?.['What’s your approx monthly revenue from private events?']).toBe(
+      '$40,000+/month',
+    );
+  });
+
+  it('no longer reports those four as empty', async () => {
+    const { port } = makePort([]);
+    const result = await handleLeadEvent(leadEventBySlug('pee-optin')!, ghlPayload, port);
+
+    for (const column of [
+      'Campaign',
+      'Audience',
+      'Creative',
+      'What’s your approx monthly revenue from private events?',
+    ]) {
+      expect(result.emptyColumns).not.toContain(column);
+    }
+  });
+
+  it('still reads the legacy nested paths when a sender uses them', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      {
+        email: 'legacy@example.com',
+        contact: {
+          attributionSource: { campaign: 'old-campaign', utmMedium: 'old-medium' },
+          lastAttributionSource: { utmContent: 'old-content' },
+        },
+      },
+      port,
+    );
+
+    expect(log.appends[0]).toMatchObject({
+      Campaign: 'old-campaign',
+      Audience: 'old-medium',
+      Creative: 'old-content',
+    });
+  });
+
+  it('prefers the utm fields over the legacy nested ones when both are present', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(
+      leadEventBySlug('pee-optin')!,
+      {
+        email: 'both@example.com',
+        utm_campaign: 'new-campaign',
+        contact: { attributionSource: { campaign: 'old-campaign' } },
+      },
+      port,
+    );
+    expect(log.appends[0]?.['Campaign']).toBe('new-campaign');
+  });
+
+  it('applies the same resolution to Triage Call Booked', async () => {
+    const { port, log } = makePort([{ rowNumber: 9, values: { EMAIL: 'known@example.com' } }]);
+    await handleLeadEvent(
+      leadEventBySlug('triage-call-booked')!,
+      { ...ghlPayload, email: 'known@example.com' },
+      port,
+    );
+
+    expect(log.updates[0]?.cells).toMatchObject({
+      Campaign: '120248317508630046',
+      Audience: 'paid_social',
+      Creative: '120248514540750046',
+    });
+  });
+
+  it('leaves the Lovable funnel on its own field names', async () => {
+    const { port, log } = makePort([]);
+    await handleLeadEvent(
+      leadEventBySlug('pee-created-lovable')!,
+      { email: 'lovable@example.com', campaign: 'lov-camp', utmMedium: 'lov-med', utmContent: 'lov-con' },
+      port,
+    );
+
+    expect(log.appends[0]).toMatchObject({
+      Campaign: 'lov-camp',
+      Audience: 'lov-med',
+      Creative: 'lov-con',
+    });
+  });
+});

@@ -107,7 +107,39 @@ const COL_STRATEGY_FUNNEL = 'Strategy Call Booked\nThrough Funnel';
 
 // Source keys in the GHL payload. Several carry a trailing space in the form
 // field name, so each is tried with and without it.
+/**
+ * Attribution. GoHighLevel flattens its fields to the top level of the
+ * payload — `customData` arrives as an empty object — and the live values come
+ * through as `utm_medium` / `utm_campaign` / `utm_content`:
+ *
+ *   utm_medium   = "paid_social"
+ *   utm_campaign = "120248317508630046"
+ *   utm_content  = "120248514540750046"
+ *
+ * The nested `contact.attributionSource.*` paths the n8n workflows read are
+ * still tried afterwards, so anything that did work keeps working.
+ */
+const SRC_CAMPAIGN = pick(
+  'utm_campaign',
+  'Campaign',
+  'contact.attributionSource.campaign',
+  'contact.lastAttributionSource.campaign',
+);
+const SRC_AUDIENCE = pick(
+  'utm_medium',
+  'Audience',
+  'contact.attributionSource.utmMedium',
+  'contact.lastAttributionSource.utmMedium',
+);
+const SRC_CREATIVE = pick(
+  'utm_content',
+  'Creative',
+  'contact.lastAttributionSource.utmContent',
+  'contact.attributionSource.utmContent',
+);
+
 const SRC_REVENUE = pick(
+  "['Monthly Catering Revenue']",
   "['What’s your approx monthly revenue from private events? ']",
   "['What’s your approx monthly revenue from private events?']",
 );
@@ -138,9 +170,9 @@ export const LEAD_EVENTS: LeadEvent[] = [
       Name: pick('full_name'),
       'PHONE NUMBER': pick('phone'),
       EMAIL: pick('email'),
-      Campaign: pick('contact.attributionSource.campaign'),
-      Audience: pick('contact.attributionSource.utmMedium'),
-      Creative: pick('contact.lastAttributionSource.utmContent'),
+      Campaign: SRC_CAMPAIGN,
+      Audience: SRC_AUDIENCE,
+      Creative: SRC_CREATIVE,
       PIC: pick('PIC'),
       [COL_REVENUE]: SRC_REVENUE,
       [COL_ENQUIRIES]: SRC_ENQUIRIES,
@@ -241,9 +273,9 @@ export const LEAD_EVENTS: LeadEvent[] = [
       Name: fromExistingRow('Name'),
       'PHONE NUMBER': fromExistingRow('PHONE NUMBER'),
       EMAIL: fromExistingRow('EMAIL'),
-      Campaign: pick('contact.attributionSource.campaign'),
-      Audience: pick('contact.attributionSource.utmMedium'),
-      Creative: pick('contact.attributionSource.utmContent'),
+      Campaign: SRC_CAMPAIGN,
+      Audience: SRC_AUDIENCE,
+      Creative: SRC_CREATIVE,
       'OPTED IN DATE / TIME': pick("customData['Survey Submitted']"),
       'Booked Call': constant('Booked'),
     },
@@ -252,9 +284,9 @@ export const LEAD_EVENTS: LeadEvent[] = [
       'PHONE NUMBER': pick('phone'),
       EMAIL: pick('email'),
       'OPTED IN DATE / TIME': pick("customData['Survey Submitted']"),
-      Campaign: pick('contact.attributionSource.campaign'),
-      Audience: pick('contact.attributionSource.utmMedium'),
-      Creative: pick('contact.lastAttributionSource.utmContent'),
+      Campaign: SRC_CAMPAIGN,
+      Audience: SRC_AUDIENCE,
+      Creative: SRC_CREATIVE,
       'Booked Call': constant('Booked'),
     },
     notes: 'Its lookup node had alwaysOutputData off, so an unseen email was dropped. Reproduced — see onMissingRow above.',

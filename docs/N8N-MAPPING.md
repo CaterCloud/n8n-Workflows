@@ -162,6 +162,31 @@ and month are zero-padded despite `numeric`. Reproduced exactly, since that is
 the shape already in the sheet. The zone is `TIMEZONE`, defaulting to
 `Australia/Sydney` — the one value declared anywhere in the export.
 
+### Attribution comes from the utm fields
+
+A captured live webhook settled where GoHighLevel actually puts things: it
+**flattens every custom field to the top level** and sends `customData` as an
+empty object. The nested `contact.attributionSource.*` paths the n8n workflows
+read carry only `sessionSource` and `medium`, so `Campaign`, `Audience` and
+`Creative` resolved empty on every lead.
+
+The live values arrive as:
+
+| Payload field | Example | Sheet column |
+| --- | --- | --- |
+| `utm_campaign` | `120248317508630046` | `Campaign` |
+| `utm_medium` | `paid_social` | `Audience` |
+| `utm_content` | `120248514540750046` | `Creative` |
+
+Those are now the primary sources, with the GHL custom fields of the same name
+and then the original nested paths as fallbacks, so a sender still using the old
+shape keeps working. Applied to both PEE Optin and Triage Call Booked. The
+Lovable funnel sends its own `campaign` / `utmMedium` / `utmContent` and is
+unchanged.
+
+The revenue answer moved too — it now arrives as `Monthly Catering Revenue`
+rather than the old question-text key, which is tried after it.
+
 ## Deliberate differences
 
 ### The opt-in timestamp is stamped on arrival
